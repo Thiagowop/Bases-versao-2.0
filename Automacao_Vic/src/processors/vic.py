@@ -1,14 +1,14 @@
-﻿"""Processador VIC conforme manual tÃ©cnico (tratamento).
+﻿"""Processador VIC conforme manual técnico (tratamento).
 
 Fluxo:
-0) PadronizaÃ§Ã£o mÃ­nima
-1) ValidaÃ§Ã£o inicial (importaÃ§Ã£o)
-2) PadronizaÃ§Ã£o de valores e criaÃ§Ã£o de colunas auxiliares
-3) RemoÃ§Ã£o de duplicados pela CHAVE
-4) Export da base tratada (sem filtros de negÃ³cio)
+0) Padronização mínima
+1) Validação inicial (importação)
+2) Padronização de valores e criação de colunas auxiliares
+3) Remoção de duplicados pela CHAVE
+4) Export da base tratada (sem filtros de negócio)
 
-Os filtros de STATUS/TIPO/AGING/blacklist sÃ£o aplicados sob demanda nas
-etapas subsequentes (batimento, devoluÃ§Ã£o, baixa).
+Os filtros de STATUS/TIPO/AGING/blacklist são aplicados sob demanda nas
+etapas subsequentes (batimento, devolução, baixa).
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from src.utils.logger import get_logger, log_section
 from src.utils.queries_sql import get_query
 from src.utils.sql_conn import get_std_connection
 from src.utils.aging import filtrar_clientes_criticos
-from src.utils.text import digits_only
+from src.utils.helpers import digits_only
 from src.utils.helpers import (
     primeiro_valor,
     normalizar_data_string,
@@ -39,7 +39,7 @@ from src.utils.filters import VicFilterApplier
 
 
 class VicProcessor:
-    """Processador para dados VIC com configuraÃƒÂ§ÃƒÂµes injetÃƒÂ¡veis."""
+    """Processador para dados VIC com configurações injetáveis."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, logger: Optional[logging.Logger] = None):
         self.config_loader = ConfigLoader()
@@ -105,13 +105,13 @@ class VicProcessor:
     def carregar_arquivo(self, caminho_arquivo: Union[str, Path]) -> pd.DataFrame:
         caminho_arquivo = Path(caminho_arquivo)
         if not caminho_arquivo.exists():
-            raise FileNotFoundError(f"Arquivo nÃƒÂ£o encontrado: {caminho_arquivo}")
-        # Usa mÃƒÂ©todo unificado para CSV/ZIP
+            raise FileNotFoundError(f"Arquivo não encontrado: {caminho_arquivo}")
+        # Usa método unificado para CSV/ZIP
         return self.file_manager.ler_csv_ou_zip(caminho_arquivo)
 
-    # --------------- PadronizaÃƒÂ§ÃƒÂ£o ---------------
+    # --------------- Padronização ---------------
     def normalizar_cabecalhos(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Normaliza apenas os cabeÃƒÂ§alhos bÃƒÂ¡sicos sem renomear para nomes canÃƒÂ´nicos"""
+        """Normaliza apenas os cabeçalhos básicos sem renomear para nomes canônicos"""
         df = df.copy()
         import unicodedata, re
         def norm(s: str) -> str:
@@ -127,7 +127,7 @@ class VicProcessor:
         return df
     
     def mapear_colunas_canonicas(self, df: pd.DataFrame) -> pd.DataFrame:
-            """Mapeia colunas normalizadas para nomes canÃ´nicos."""
+            """Mapeia colunas normalizadas para nomes canônicos."""
             df = df.copy()
             synonyms = {
                 'CPF CNPJ': 'CPFCNPJ_CLIENTE', 'CPFCNPJ': 'CPFCNPJ_CLIENTE', 'CPFCNPJ CLIENTE': 'CPFCNPJ_CLIENTE',
@@ -163,7 +163,7 @@ class VicProcessor:
             df['VENCIMENTO'] = pd.to_datetime(df['VENCIMENTO'], errors='coerce')
         df['CPFCNPJ_CLIENTE'] = df['CPFCNPJ_CLIENTE'].astype(str).str.strip()
         
-        # Formatar valores com vÃ­rgula como separador decimal
+        # Formatar valores com vírgula como separador decimal
         if 'VALOR' in df.columns:
             df['VALOR'] = df['VALOR'].apply(self._formatar_valor_decimal)
         
@@ -179,7 +179,7 @@ class VicProcessor:
         return f"{numero:.2f}".replace(".", ",")
 
     def criar_colunas_auxiliares(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Gera colunas auxiliares reutilizÃ¡veis (CPF/CNPJ limpo e telefone limpo)."""
+        """Gera colunas auxiliares reutilizáveis (CPF/CNPJ limpo e telefone limpo)."""
 
         df = df.copy()
 
@@ -207,7 +207,7 @@ class VicProcessor:
         return df
 
     def _obter_colunas_telefone(self, df: pd.DataFrame) -> List[str]:
-        """Identifica as colunas de telefone a partir da configuraÃ§Ã£o ou heurÃ­stica."""
+        """Identifica as colunas de telefone a partir da configuração ou heurística."""
 
         configuradas = [col for col in self.phone_columns if col in df.columns]
         if configuradas:
@@ -227,8 +227,8 @@ class VicProcessor:
         return f"{base}_LIMPO"
 
     # ------------------------------------------------------------------
-    # FunÃ§Ãµes auxiliares movidas para src.utils.helpers
-    # Mantidas aqui apenas para compatibilidade com testes e outros mÃ³dulos
+    # Funções auxiliares movidas para src.utils.helpers
+    # Mantidas aqui apenas para compatibilidade com testes e outros módulos
     @staticmethod
     def _primeiro_valor(series: Optional[pd.Series]) -> Optional[Any]:
         """DEPRECATED: Use src.utils.helpers.primeiro_valor"""
@@ -289,7 +289,7 @@ class VicProcessor:
         return self.filter_applier.filtrar_status_baixa(df)
 
     def remover_duplicados_chave(self, df: pd.DataFrame) -> tuple[pd.DataFrame, int, Optional[str]]:
-        """Remove duplicados pela coluna CHAVE exportando ocorrÃªncia para inconsistÃªncias."""
+        """Remove duplicados pela coluna CHAVE exportando ocorrência para inconsistências."""
 
         if 'CHAVE' not in df.columns:
             raise ValueError("Coluna CHAVE ausente apos padronizacao de valores (VIC)")
@@ -355,27 +355,27 @@ class VicProcessor:
             df = self.extrair_dados_vic()
         orig = len(df)
 
-        # 1) Normalizar apenas cabeÃƒÂ§alhos (sem renomear)
+        # 1) Normalizar apenas cabeçalhos (sem renomear)
         df = self.normalizar_cabecalhos(df)
-        # 2) Mapear para nomes canÃ´nicos
+        # 2) Mapear para nomes canônicos
         df = self.mapear_colunas_canonicas(df)
 
-        # Anexar data-base da extraÃ§Ã£o
+        # Anexar data-base da extração
         data_base_val = self._resolver_data_base(df, entrada_path, data_base)
         df["DATA_BASE"] = data_base_val
 
-        # 3) ValidaÃ§Ã£o inicial (antes de filtros de negÃ³cio)
+        # 3) Validação inicial (antes de filtros de negócio)
         df_val, df_inv = self.validator.validar_dados(df)
         inconsistencias_iniciais = len(df_inv)
 
-        # 4) PadronizaÃ§Ã£o e colunas auxiliares
+        # 4) Padronização e colunas auxiliares
         df_val = self.padronizar_valores(df_val)
         df_val = self.criar_colunas_auxiliares(df_val)
 
-        # 5) Base canÃ´nica (sem filtros)
+        # 5) Base canônica (sem filtros)
         df_base_limpa, duplicatas_removidas, arquivo_dup = self.remover_duplicados_chave(df_val)
 
-        # 6) ExportaÃ§Ã£o Ãºnica da base tratada
+        # 6) Exportação única da base tratada
         nome_base_limpa = self.export_config.get('base_limpa_prefix', 'vic_base_limpa')
         arquivo_base_limpa = self.exportacao_service.exportar_zip(
             {f"{nome_base_limpa}.csv": df_base_limpa},
@@ -384,7 +384,7 @@ class VicProcessor:
             add_timestamp=self.add_timestamp,
         )
 
-        # InconsistÃªncias (dados invÃ¡lidos)
+        # Inconsistências (dados inválidos)
         arquivo_inconsistencias = None
         if len(df_inv) > 0:
             df_inc = self.inconsistencia_manager.criar_dataframe_inconsistencias(df_inv)
@@ -396,7 +396,7 @@ class VicProcessor:
                 como_zip=True,
             )
 
-        # EstatÃ­sticas
+        # Estatísticas
         duracao = (datetime.now() - inicio).total_seconds()
         taxa_ap = (len(df_base_limpa) / orig * 100) if orig > 0 else 0.0
         stats = {
@@ -416,41 +416,27 @@ class VicProcessor:
             'duracao': duracao,
         }
 
-        # Logs â€“ resumo amigÃ¡vel
+        # Logs – resumo amigável
         log_section(self.logger, "INICIANDO PIPELINE - VIC")
-        print("ðŸ“Œ Etapa 1 â€” Tratamento VIC")
+        print("📌 Etapa 1 — Tratamento VIC")
         print("")
         print(f"Registros originais: {orig:,}")
         print(
-            "InconsistÃªncias iniciais (CPF/CNPJ vazio, VENCIMENTO invÃ¡lido ou VALOR invÃ¡lido):",
+            "Inconsistências iniciais (CPF/CNPJ vazio, VENCIMENTO inválido ou VALOR inválido):",
             f"{inconsistencias_iniciais:,}"
         )
-        print(f"Registros vÃ¡lidos apÃ³s padronizaÃ§Ã£o: {len(df_val):,}")
+        print(f"Registros válidos após padronização: {len(df_val):,}")
         if duplicatas_removidas:
-            print(f"â€¢ Duplicatas removidas por CHAVE: {duplicatas_removidas:,}")
+            print(f"• Duplicatas removidas por CHAVE: {duplicatas_removidas:,}")
         print(f"Registros finais base VIC: {len(df_base_limpa):,}")
-        print(f"ðŸ”¹ Taxa de aproveitamento: {taxa_ap:.2f}%")
+        print(f"🔹 Taxa de aproveitamento: {taxa_ap:.2f}%")
         print("")
-        print(f"ðŸ“¦ Base limpa: {arquivo_base_limpa}")
+        print(f"📦 Base limpa: {arquivo_base_limpa}")
         if arquivo_inconsistencias:
-            print(f"ðŸ“¦ InconsistÃªncias: {arquivo_inconsistencias}")
+            print(f"📦 Inconsistências: {arquivo_inconsistencias}")
         if arquivo_dup:
-            print(f"ðŸ“¦ Duplicatas (CHAVE): {arquivo_dup}")
-        print(f"â±ï¸DuraÃ§Ã£o: {duracao:.1f}s")
-        print("â„¹ï¸ Filtros de negÃ³cio serÃ£o aplicados nas etapas subsequentes (batimento, devoluÃ§Ã£o, baixa).")
+            print(f"📦 Duplicatas (CHAVE): {arquivo_dup}")
+        print(f"⏱️ Duração: {duracao:.1f}s")
+        print("ℹ️ Filtros de negócio serão aplicados nas etapas subsequentes (batimento, devolução, baixa).")
 
         return stats
-
-
-
-
-
-
-
-
-
-
-
-
-
-

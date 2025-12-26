@@ -15,6 +15,23 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+# Configurar encoding UTF-8 para console Windows
+if sys.platform == 'win32':
+    import io
+    # Configurar code page para UTF-8 via ctypes
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.SetConsoleOutputCP(65001)
+        kernel32.SetConsoleCP(65001)
+    except Exception:
+        pass
+    # Reconfigurar stdout/stderr para UTF-8
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 import pandas as pd
 
@@ -22,11 +39,6 @@ import pandas as pd
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-# Tentar forcar stdout em UTF-8 para evitar erros de encode no Windows/CP1252
-try:
-    sys.stdout.reconfigure(encoding='utf-8')
-except Exception:
-    pass
 
 from src.config.loader import ConfigLoader
 from src.processors import (
@@ -39,7 +51,7 @@ from src.processors import (
 )
 from src.utils.logger import get_logger
 from src.utils.validator import ValidadorConsistencia
-from src.utils.log_parser import (
+from src.utils.helpers import (
     parse_extraction_summary,
     _SUMMARY_FIELDS,
 )

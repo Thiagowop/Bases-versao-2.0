@@ -1,6 +1,6 @@
 ﻿"""Processador de Batimento.
 
-Identifica parcelas presentes na VIC que nÃ£o estÃ£o na MAX e gera arquivos
+Identifica parcelas presentes na VIC que não estão na MAX e gera arquivos
 separados (judicial/extrajudicial).
 """
 
@@ -19,39 +19,38 @@ from src.core.file_manager import FileManager
 from src.utils.validator import InconsistenciaManager
 from src.core.packager import ExportacaoService
 from src.utils.logger import get_logger, log_section
-from src.utils.anti_join import procv_vic_menos_max
-from src.utils.text import digits_only
+from src.utils.helpers import procv_vic_menos_max, digits_only
 from src.processors.vic import VicFilterApplier
 
 
 class BatimentoProcessor:
-    """Processador para batimento usando novos utilitÃ¡rios da Fase 1."""
+    """Processador para batimento usando novos utilitários da Fase 1."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None, logger: Optional[logging.Logger] = None):
-        # Carregar configuraÃ§Ãµes usando novo ConfigLoader
+        # Carregar configurações usando novo ConfigLoader
         self.config_loader = ConfigLoader()
         self.config = config or self.config_loader.get_config()
         self.logger = logger or get_logger(__name__, self.config)
         self.logger.setLevel(logging.WARNING)
 
-        # ConfiguraÃ§Ãµes do processador de batimento alinhadas com config.yaml
+        # Configurações do processador de batimento alinhadas com config.yaml
         self.batimento_config = self.config_loader.get_nested_value(self.config, 'batimento_processor', {})
         self.global_config = self.config_loader.get_nested_value(self.config, 'global', {})
         self.paths_config = self.config_loader.get_nested_value(self.config, 'paths', {})
 
-        # Inicializar utilitÃ¡rios da Fase 1
+        # Inicializar utilitários da Fase 1
         self.file_manager = FileManager(self.config)
         self.inconsistencia_manager = InconsistenciaManager(self.config)
         self.exportacao_service = ExportacaoService(self.config, self.file_manager)
 
-        # ConfiguraÃ§Ãµes especÃ­ficas de batimento
+        # Configurações específicas de batimento
         self.columns_config = self.batimento_config.get('columns', {})
         self.required_columns = self.columns_config.get('required', ['CHAVE', 'CPFCNPJ_CLIENTE', 'VENCIMENTO'])
 
         empresa_cfg = self.global_config.get('empresa', {})
         self.cnpj_credor = str(empresa_cfg.get('cnpj', '')).strip()
         if not self.cnpj_credor:
-            raise ValueError('CNPJ da empresa nÃ£o configurado. Defina global.empresa.cnpj no config.yaml')
+            raise ValueError('CNPJ da empresa não configurado. Defina global.empresa.cnpj no config.yaml')
 
         # Timestamp
         self.add_timestamp = self.global_config.get('add_timestamp', True)
@@ -59,7 +58,7 @@ class BatimentoProcessor:
         # CPFs judiciais
         self.judicial_cpfs: Set[str] = set()
 
-        self.logger.info("BatimentoProcessor inicializado com novos utilitÃ¡rios da Fase 1")
+        self.logger.info("BatimentoProcessor inicializado com novos utilitários da Fase 1")
 
     def carregar_arquivo(self, caminho: Union[str, Path]) -> pd.DataFrame:
         """Carrega arquivo CSV ou extrai de ZIP usando FileManager."""
@@ -84,15 +83,15 @@ class BatimentoProcessor:
                     judicial_file = Path("data/input/judicial/ClientesJudiciais.zip")
 
             if not judicial_file.is_absolute():
-                # Usar caminho absoluto correto sem duplicaÃ§Ã£o
+                # Usar caminho absoluto correto sem duplicação
                 base_path = Path.cwd()
                 judicial_file = base_path / judicial_file
             if not judicial_file.exists():
                 self.logger.warning(
-                    f"Arquivo de clientes judiciais nÃ£o encontrado: {judicial_file}"
+                    f"Arquivo de clientes judiciais não encontrado: {judicial_file}"
                 )
                 self.logger.warning(
-                    "Todos os registros serÃ£o classificados como EXTRAJUDICIAL"
+                    "Todos os registros serão classificados como EXTRAJUDICIAL"
                 )
                 return
             self.logger.info(f"Carregando clientes judiciais: {judicial_file}")
@@ -115,10 +114,10 @@ class BatimentoProcessor:
             self.judicial_cpfs = set()
 
     def realizar_cruzamento(self, df_vic: pd.DataFrame, df_max: pd.DataFrame) -> pd.DataFrame:
-        """Identifica parcelas em aberto na VIC que nÃ£o estÃ£o na MAX (left anti-join)."""
-        self.logger.info("PROCV VICâˆ’MAX: iniciando identificaÃ§Ã£o...")
+        """Identifica parcelas em aberto na VIC que não estão na MAX (left anti-join)."""
+        self.logger.info("PROCV VIC-MAX: iniciando identificação...")
 
-        # No batimento nÃ£o hÃ¡ filtro por status; usar MAX como recebido
+        # No batimento não há filtro por status; usar MAX como recebido
         df_max_filtrado = df_max.copy()
 
         if 'CHAVE' not in df_vic.columns:
@@ -146,10 +145,10 @@ class BatimentoProcessor:
             'registros_batimento': len(df_nao_encontradas),
         }
 
-        # Guardar MAX filtrado para validaÃ§Ãµes posteriores
+        # Guardar MAX filtrado para validações posteriores
         self._max_filtrado = df_max_filtrado
 
-        self.logger.info("PROCV VICâˆ’MAX: %s registros", f"{len(df_nao_encontradas):,}")
+        self.logger.info("PROCV VIC-MAX: %s registros", f"{len(df_nao_encontradas):,}")
         return df_nao_encontradas
 
     def formatar_batimento(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -201,7 +200,7 @@ class BatimentoProcessor:
             chave = chave.fillna("").str.strip()
 
         if chave is None:
-            raise ValueError("Coluna CHAVE ausente para formataÃ§Ã£o do batimento")
+            raise ValueError("Coluna CHAVE ausente para formatação do batimento")
 
         chave_final = chave
 
@@ -241,7 +240,7 @@ class BatimentoProcessor:
         """Gera arquivos separados (judicial e extrajudicial) em um ZIP."""
         if df_batimento.empty:
             # Sempre gerar um ZIP para compatibilidade com consumidores que
-            # esperam 'arquivo_gerado' como caminho vÃ¡lido.
+            # esperam 'arquivo_gerado' como caminho válido.
             prefix = (
                 self.config.get('batimento_processor', {})
                 .get('export', {})
@@ -291,7 +290,7 @@ class BatimentoProcessor:
             f"{len(df_extrajudicial):,}",
         )
 
-        # Nome do ZIP baseado na configuraÃ§Ã£o
+        # Nome do ZIP baseado na configuração
         zip_path = self.exportacao_service.exportar_zip(
             arquivos, prefix, "batimento"
         )
@@ -319,7 +318,7 @@ class BatimentoProcessor:
             vic_filter = VicFilterApplier(self.config, self.logger)
             df_vic, vic_metrics = vic_filter.aplicar_filtros_inclusao(df_vic_raw)
             self.logger.info(
-                "VIC apÃ³s filtros configurados para batimento: %s",
+                "VIC após filtros configurados para batimento: %s",
                 f"{len(df_vic):,} registros",
             )
 
@@ -339,22 +338,22 @@ class BatimentoProcessor:
             }
             self.metrics_ultima_execucao.update(filtro_counts)
 
-            # FormataÃ§Ã£o
+            # Formatação
             df_fmt = self.formatar_batimento(df_cross)
 
-            # SaÃ­da
+            # Saída
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             base_output = (
                 Path(output_dir) if output_dir 
                 else Path(self.paths_config.get('output', {}).get('base', 'data/output'))
             )
             if not base_output.exists():
-                raise FileNotFoundError(f"DiretÃ³rio de saÃ­da nÃ£o existe: {base_output}")
+                raise FileNotFoundError(f"Diretório de saída não existe: {base_output}")
             arquivo_gerado, n_jud, n_ext = self.gerar_arquivos_batimento(
                 df_fmt, base_output, timestamp
             )
 
-            # Calcular validaÃ§Ãµes
+            # Calcular validações
             vic_keys = set(df_vic['CHAVE'].astype(str).str.strip())
             max_df = getattr(self, '_max_filtrado', df_max)
             max_keys = set(max_df['PARCELA'].astype(str).str.strip()) if 'PARCELA' in max_df.columns else set()
@@ -377,30 +376,30 @@ class BatimentoProcessor:
             }
 
             log_section(self.logger, "BATIMENTO - VIC - MAX")
-            print("ðŸ“Œ Etapa 3 â€” Batimento VICâˆ’MAX (LEFT ANTI-JOIN)")
+            print("📌 Etapa 3 — Batimento VIC−MAX (LEFT ANTI-JOIN)")
             print("")
             vic_iniciais = filtro_counts['vic_registros_iniciais']
             print(f"VIC base limpa recebida: {vic_iniciais:,} registros")
             if vic_filter.filtros_inclusao.get('status_em_aberto', True):
-                print(f"ApÃ³s STATUS em aberto: {filtro_counts['vic_apos_status']:,}")
+                print(f"Após STATUS em aberto: {filtro_counts['vic_apos_status']:,}")
             else:
                 print("Filtro STATUS (batimento) desabilitado")
             if vic_filter.filtros_inclusao.get('tipos_validos', True) and vic_filter.tipos_validos:
                 print(
-                    f"ApÃ³s filtro TIPO ({', '.join(vic_filter.tipos_validos)}): {filtro_counts['vic_apos_tipos']:,}"
+                    f"Após filtro TIPO ({', '.join(vic_filter.tipos_validos)}): {filtro_counts['vic_apos_tipos']:,}"
                 )
             elif not vic_filter.filtros_inclusao.get('tipos_validos', True):
                 print("Filtro TIPO (batimento) desabilitado")
             if vic_filter.filtros_inclusao.get('aging', True):
                 print(
-                    f"ApÃ³s filtro AGING > {vic_filter.aging_minimo} dias: {filtro_counts['vic_apos_aging']:,}"
+                    f"Após filtro AGING > {vic_filter.aging_minimo} dias: {filtro_counts['vic_apos_aging']:,}"
                 )
             else:
                 print("Filtro AGING (batimento) desabilitado")
             if vic_filter.filtros_inclusao.get('blacklist', True):
                 removidos = filtro_counts['vic_apos_aging'] - filtro_counts['vic_apos_blacklist']
                 print(
-                    f"ApÃ³s filtro Blacklist: {filtro_counts['vic_apos_blacklist']:,} (removidos: {removidos:,})"
+                    f"Após filtro Blacklist: {filtro_counts['vic_apos_blacklist']:,} (removidos: {removidos:,})"
                 )
             else:
                 print("Filtro Blacklist (batimento) desabilitado")
@@ -410,20 +409,20 @@ class BatimentoProcessor:
                 f"Parcelas VIC ausentes no MAX: {stats['registros_batimento']:,}"
             )
             print(
-                f"DivisÃ£o por carteira: Judicial = {n_jud:,} | Extrajudicial = {n_ext:,}"
+                f"Divisão por carteira: Judicial = {n_jud:,} | Extrajudicial = {n_ext:,}"
             )
             taxa_bat = (
                 stats['registros_batimento'] / stats['registros_vic'] * 100
                 if stats['registros_vic'] else 0.0
             )
-            print(f"ðŸ”¹ Taxa de batimento: {taxa_bat:.2f}%")
+            print(f"🔹 Taxa de batimento: {taxa_bat:.2f}%")
             consist_ok = stats['validacao_subset'] and stats['validacao_disj']
             print(
-                "âœ“ ConsistÃªncia: {}".format("OK" if consist_ok else "FAIL")
+                "✓ Consistência: {}".format("OK" if consist_ok else "FAIL")
             )
             print("")
-            print(f"ðŸ“¦ Exportado: {arquivo_gerado}")
-            print(f"â±ï¸DuraÃ§Ã£o: {duracao:.2f}s")
+            print(f"📦 Exportado: {arquivo_gerado}")
+            print(f"⏱️ Duração: {duracao:.2f}s")
             return stats
         except Exception as e:
             self.logger.error(f"Erro no pipeline de batimento: {e}")

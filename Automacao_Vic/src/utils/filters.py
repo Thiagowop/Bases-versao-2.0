@@ -11,12 +11,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 
-from config.loader import ConfigLoader
-from utils.logger import get_logger
-from utils.queries_sql import get_query
-from utils.sql_conn import get_std_connection
-from utils.aging import filtrar_clientes_criticos
-from utils.text import digits_only
+from src.config.loader import ConfigLoader
+from src.utils.logger import get_logger
+from src.utils.queries_sql import get_query
+from src.utils.sql_conn import get_std_connection
+from src.utils.aging import filtrar_clientes_criticos
+from src.utils.helpers import digits_only
 
 
 class VicFilterApplier:
@@ -103,7 +103,7 @@ class VicFilterApplier:
             try:
                 import os
                 import pandas as pd
-                from src.utils.text import digits_only
+                from src.utils.helpers import digits_only
                 
                 if os.path.exists(blacklist_dir):
                     for arquivo in os.listdir(blacklist_dir):

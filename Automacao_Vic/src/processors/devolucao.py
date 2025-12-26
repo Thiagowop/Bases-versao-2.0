@@ -1,7 +1,7 @@
-﻿"""MÃ³dulo de processamento da DevoluÃ§Ã£o (MAX âˆ’ VIC).
+﻿"""Módulo de processamento da Devolução (MAX - VIC).
 
-Identifica tÃ­tulos que estÃ£o presentes no MAX tratado e ausentes na VIC
-tratada e gera planilha para devoluÃ§Ã£o .
+Identifica títulos que estão presentes no MAX tratado e ausentes na VIC
+tratada e gera planilha para devolução .
 """
 
 from __future__ import annotations
@@ -19,15 +19,14 @@ from src.core.packager import ExportacaoService
 from src.core.file_manager import FileManager
 from src.utils.validator import InconsistenciaManager
 from src.utils.logger import get_logger, log_section
-from src.utils.anti_join import procv_max_menos_vic
-from src.utils.text import normalize_ascii_upper, digits_only
+from src.utils.helpers import procv_max_menos_vic, normalize_ascii_upper, digits_only
 from src.utils.helpers import primeiro_valor, normalizar_data_string, extrair_data_referencia
 from src.processors.vic import VicFilterApplier
 
 
 @dataclass(frozen=True)
 class _ExportCfg:
-    """Estrutura de configuraÃ§Ã£o de exportaÃ§Ã£o da devoluÃ§Ã£o."""
+    """Estrutura de configuração de exportação da devolução."""
 
     prefix: str
     subdir: str
@@ -39,7 +38,7 @@ class _ExportCfg:
 
 
 class DevolucaoProcessor:
-    """Processador para gerar a planilha de devoluÃ§Ã£o MAX âˆ’ VIC."""
+    """Processador para gerar a planilha de devolução MAX - VIC."""
 
     def __init__(
         self,
@@ -51,7 +50,7 @@ class DevolucaoProcessor:
         self.logger = logger or get_logger(__name__, self.config)
         self.logger.setLevel(logging.WARNING)
 
-        # ConfiguraÃ§Ã£o do mÃ³dulo
+        # Configuração do módulo
         self.devolucao_config = self.config_loader.get_nested_value(
             self.config, "devolucao", {}
         )
@@ -67,7 +66,7 @@ class DevolucaoProcessor:
         self.exportacao_service = ExportacaoService(self.config, self.file_manager)
         self.filter_applier = VicFilterApplier(self.config, self.logger)
 
-        # ParÃ¢metros
+        # Parâmetros
         self.campanha_termo = (self.devolucao_config.get("campanha_termo") or "").strip()
         self.status_excluir = [
             s.upper()
@@ -88,7 +87,7 @@ class DevolucaoProcessor:
         self.cnpj_credor = str(empresa_cfg.get("cnpj", "")).strip()
         self.date_format = self.global_config.get("date_format", "%d/%m/%Y")
         if not self.cnpj_credor:
-            raise ValueError('CNPJ da empresa nÃ£o configurado. Defina global.empresa.cnpj no config.yaml')
+            raise ValueError('CNPJ da empresa não configurado. Defina global.empresa.cnpj no config.yaml')
 
         self._judicial_cpfs: set[str] = set()
 
@@ -96,7 +95,7 @@ class DevolucaoProcessor:
 
     # ------------------------------------------------------------------
     def carregar_arquivo(self, caminho: Union[str, Path]) -> pd.DataFrame:
-        """LÃª CSV ou ZIP usando o ``FileManager``."""
+        """Lê CSV ou ZIP usando o ``FileManager``."""
 
         return self.file_manager.ler_csv_ou_zip(Path(caminho))
 
@@ -121,8 +120,8 @@ class DevolucaoProcessor:
         )
 
     # ------------------------------------------------------------------
-    # FunÃ§Ãµes auxiliares movidas para src.utils.helpers
-    # Mantidas aqui apenas para compatibilidade com testes e outros mÃ³dulos
+    # Funções auxiliares movidas para src.utils.helpers
+    # Mantidas aqui apenas para compatibilidade com testes e outros módulos
     @staticmethod
     def _primeiro_valor(series: Optional[pd.Series]) -> Optional[Any]:
         """DEPRECATED: Use src.utils.helpers.primeiro_valor"""
@@ -160,7 +159,7 @@ class DevolucaoProcessor:
                 return
             path = Path(valor)
             if not path.exists():
-                self.logger.warning("Arquivo de baixa nÃ£o encontrado: %s", path)
+                self.logger.warning("Arquivo de baixa não encontrado: %s", path)
                 return
             caminhos.append((path, nome_csv))
 
@@ -260,7 +259,7 @@ class DevolucaoProcessor:
 
         if not judicial_file.exists():
             self.logger.warning(
-                "Arquivo de clientes judiciais nÃ£o encontrado: %s",
+                "Arquivo de clientes judiciais não encontrado: %s",
                 judicial_file,
             )
             self._judicial_cpfs = set()
@@ -390,11 +389,11 @@ class DevolucaoProcessor:
         df_max: pd.DataFrame,
         counts_iniciais: Optional[Dict[str, Any]] = None,
     ) -> pd.DataFrame:
-        """Calcula K_dev = MAX âˆ’ VIC e retorna DataFrame filtrado (PROCV)."""
+        """Calcula K_dev = MAX - VIC e retorna DataFrame filtrado (PROCV)."""
 
-        self.logger.info("PROCV MAXâˆ’VIC: iniciando identificaÃ§Ã£o...")
+        self.logger.info("PROCV MAX-VIC: iniciando identificação...")
 
-        # Fail-fast em colunas obrigatÃ³rias
+        # Fail-fast em colunas obrigatórias
         if self.ch_vic not in df_vic.columns:
             raise ValueError(f"Coluna obrigatoria ausente em VIC: {self.ch_vic}")
         if self.ch_max not in df_max.columns:
@@ -443,11 +442,11 @@ class DevolucaoProcessor:
         if self.status_excluir:
             counts["max_apos_status_excluir"] = len(df_max_f)
 
-        # PROCV: MAX âˆ’ VIC
+        # PROCV: MAX - VIC
         df_out = procv_max_menos_vic(df_max_f, df_vic, self.ch_max, self.ch_vic)
 
         counts["registros_devolucao"] = len(df_out)
-        self.logger.info("PROCV MAXâˆ’VIC: %s registros", f"{len(df_out):,}")
+        self.logger.info("PROCV MAX-VIC: %s registros", f"{len(df_out):,}")
 
         # Armazena contadores para uso posterior (processar)
         self.metrics_ultima_execucao = counts
@@ -456,7 +455,7 @@ class DevolucaoProcessor:
 
     # ------------------------------------------------------------------
     def formatar_devolucao(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Formata o DataFrame de devoluÃ§Ã£o para o layout final."""
+        """Formata o DataFrame de devolução para o layout final."""
 
         if df.empty:
             return pd.DataFrame()
@@ -496,7 +495,7 @@ class DevolucaoProcessor:
         out["VALOR"] = df.get("VALOR", pd.Series("", index=df.index))
         tipo_series = df.get("TIPO_PARCELA")
         if tipo_series is None:
-            # NÃ£o criar default; manter vazio quando ausente
+            # Não criar default; manter vazio quando ausente
             out["TIPO PARCELA"] = ""
         elif isinstance(tipo_series, str):
             out["TIPO PARCELA"] = tipo_series.upper()
@@ -514,7 +513,7 @@ class DevolucaoProcessor:
         max_path: Union[str, Path],
         baixa_paths: Optional[Union[Dict[str, Any], Sequence[Union[str, Path]], str, Path]] = None,
     ) -> Dict[str, Any]:
-        """Executa a pipeline completa de devoluÃ§Ã£o."""
+        """Executa a pipeline completa de devolução."""
 
         inicio = datetime.now()
         self.logger.info("Iniciando pipeline de devolucao...")
@@ -572,65 +571,65 @@ class DevolucaoProcessor:
             "arquivo_judicial": export_paths.get("arquivo_judicial"),
             "arquivo_extrajudicial": export_paths.get("arquivo_extrajudicial"),
             "arquivo_geral": export_paths.get("arquivo_geral"),
-            # Compatibilidade com testes e outros mÃ³dulos: chave padrÃ£o
-            # 'arquivo_gerado' apontarÃ¡ para o ZIP consolidado quando disponÃ­vel,
-            # caso contrÃ¡rio utiliza o caminho do arquivo geral.
+            # Compatibilidade com testes e outros módulos: chave padrão
+            # 'arquivo_gerado' apontará para o ZIP consolidado quando disponível,
+            # caso contrário utiliza o caminho do arquivo geral.
             "arquivo_gerado": export_paths.get("arquivo_zip") or export_paths.get("arquivo_geral"),
             "duracao": duracao,
             **metrics,
         }
 
         # Summary
-        log_section(self.logger, "DEVOLUÃ‡ÃƒO - MAX - VIC")
-        print("ðŸ“Œ Etapa 6 â€” DevoluÃ§Ã£o MAXâˆ’VIC (RIGHT ANTI-JOIN)")
+        log_section(self.logger, "DEVOLUÇÃO - MAX - VIC")
+        print("📌 Etapa 6 — Devolução MAX-VIC (RIGHT ANTI-JOIN)")
         print("")
         vic_iniciais = metrics["vic_registros_iniciais"]
         print(f"VIC base limpa recebida: {vic_iniciais:,} registros")
         if vic_filter.filtros_inclusao.get("status_em_aberto", True):
-            print(f"ApÃ³s STATUS em aberto: {metrics['vic_apos_status']:,}")
+            print(f"Após STATUS em aberto: {metrics['vic_apos_status']:,}")
         else:
-            print("Filtro STATUS (devoluÃ§Ã£o) desabilitado")
+            print("Filtro STATUS (devolução) desabilitado")
         if vic_filter.filtros_inclusao.get("tipos_validos", True) and vic_filter.tipos_validos:
             print(
-                f"ApÃ³s filtro TIPO ({', '.join(vic_filter.tipos_validos)}): {metrics['vic_apos_tipos']:,}"
+                f"Após filtro TIPO ({', '.join(vic_filter.tipos_validos)}): {metrics['vic_apos_tipos']:,}"
             )
         elif not vic_filter.filtros_inclusao.get("tipos_validos", True):
-            print("Filtro TIPO (devoluÃ§Ã£o) desabilitado")
+            print("Filtro TIPO (devolução) desabilitado")
         if vic_filter.filtros_inclusao.get("aging", True):
             print(
-                f"ApÃ³s filtro AGING > {vic_filter.aging_minimo} dias: {metrics['vic_apos_aging']:,}"
+                f"Após filtro AGING > {vic_filter.aging_minimo} dias: {metrics['vic_apos_aging']:,}"
             )
         else:
-            print("Filtro AGING (devoluÃ§Ã£o) desabilitado")
+            print("Filtro AGING (devolução) desabilitado")
         if vic_filter.filtros_inclusao.get("blacklist", True):
             removidos = metrics['vic_apos_aging'] - metrics['vic_apos_blacklist']
             print(
-                f"ApÃ³s filtro Blacklist: {metrics['vic_apos_blacklist']:,} (removidos: {removidos:,})"
+                f"Após filtro Blacklist: {metrics['vic_apos_blacklist']:,} (removidos: {removidos:,})"
             )
         else:
-            print("Filtro Blacklist (devoluÃ§Ã£o) desabilitado")
-        print(f"VIC tratado para devoluÃ§Ã£o: {len(df_vic):,} registros")
+            print("Filtro Blacklist (devolução) desabilitado")
+        print(f"VIC tratado para devolução: {len(df_vic):,} registros")
         print(
             f"MAX tratado (antes de filtros): {metrics['max_registros_iniciais']:,} registros"
         )
         if self.aplicar_status_max:
             print(
-                f"MAX apÃ³s STATUS em aberto: {metrics['max_apos_status_aberto']:,} registros"
+                f"MAX após STATUS em aberto: {metrics['max_apos_status_aberto']:,} registros"
             )
         else:
             print("Filtro STATUS (MAX) desabilitado")
         if self.campanha_termo:
             print(
-                f"MAX apÃ³s filtro CAMPANHA: {metrics.get('max_apos_campanha', len(df_max_filtrado)):,} registros"
+                f"MAX após filtro CAMPANHA: {metrics.get('max_apos_campanha', len(df_max_filtrado)):,} registros"
             )
         if self.status_excluir:
             max_apos_status = metrics.get('max_apos_status_excluir', len(df_max_filtrado))
-            print(f"MAX apÃ³s exclusÃ£o de status: {max_apos_status:,} registros")
+            print(f"MAX após exclusão de status: {max_apos_status:,} registros")
         print(
             f"Registros identificados antes da baixa: {metrics['registros_devolucao_bruto']:,}"
         )
         print(
-            f"Registros identificados para devoluÃ§Ã£o (apÃ³s baixa): {stats['registros_devolucao']:,}"
+            f"Registros identificados para devolução (após baixa): {stats['registros_devolucao']:,}"
         )
         if removidos_baixa:
             print(f"Registros removidos por baixa: {removidos_baixa:,}")
@@ -640,9 +639,9 @@ class DevolucaoProcessor:
         )
         max_status = base_max or metrics.get('max_registros_iniciais', 0)
         taxa_dev = (stats['registros_devolucao'] / max_status * 100) if max_status else 0.0
-        print(f"ðŸ”¹ Taxa de devoluÃ§Ã£o: {taxa_dev:.2f}%")
+        print(f"🔹 Taxa de devolução: {taxa_dev:.2f}%")
         print(
-            f"DivisÃ£o por carteira: Judicial = {len(df_jud_raw):,} | Extrajudicial = {len(df_ext_raw):,}"
+            f"Divisão por carteira: Judicial = {len(df_jud_raw):,} | Extrajudicial = {len(df_ext_raw):,}"
         )
         print("")
         if export_paths.get("arquivo_zip"):
@@ -654,10 +653,9 @@ class DevolucaoProcessor:
             ]
             nomes = [nome for nome in nomes if nome]
             if nomes:
-                print(f"ðŸ“¦ Exportado: {export_paths['arquivo_zip']} ({', '.join(nomes)})")
+                print(f"📦 Exportado: {export_paths['arquivo_zip']} ({', '.join(nomes)})")
             else:
-                print(f"ðŸ“¦ Exportado: {export_paths['arquivo_zip']}")
-        print(f"â±ï¸DuraÃ§Ã£o: {duracao:.2f}s")
+                print(f"📦 Exportado: {export_paths['arquivo_zip']}")
+        print(f"⏱️ Duração: {duracao:.2f}s")
 
         return stats
-

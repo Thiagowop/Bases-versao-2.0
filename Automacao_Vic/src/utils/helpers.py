@@ -1,11 +1,99 @@
-"""Utilitários auxiliares comuns para processadores."""
+"""Utilitários auxiliares comuns para processadores.
+
+Consolida funções de:
+- anti_join.py (procv_vic_menos_max, procv_max_menos_vic, procv_left_minus_right)
+- text.py (normalize_ascii_upper, digits_only)
+- helpers genéricos (primeiro_valor, normalizar_data_string, etc.)
+"""
+
+from __future__ import annotations
 
 import re
+import unicodedata
 from numbers import Number
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 import pandas as pd
 
+
+# =============================================================================
+# FUNÇÕES DE TEXTO (originalmente em text.py)
+# =============================================================================
+
+def normalize_ascii_upper(serie: pd.Series) -> pd.Series:
+    """Retorna série normalizada para comparação insensitive.
+
+    Remove acentos, converte para maiúsculas e aplica strip.
+    """
+    def _norm(txt: str) -> str:
+        chars = unicodedata.normalize("NFKD", txt)
+        chars = "".join(ch for ch in chars if not unicodedata.combining(ch))
+        return chars.upper().strip()
+
+    return serie.astype(str).map(_norm)
+
+
+def digits_only(serie: pd.Series) -> pd.Series:
+    """Remove todos os caracteres não numéricos de uma série."""
+    return serie.astype(str).str.replace(r"\D", "", regex=True)
+
+
+# =============================================================================
+# FUNÇÕES DE ANTI-JOIN (originalmente em anti_join.py)
+# =============================================================================
+
+def _normalize_series(values: pd.Series) -> pd.Series:
+    """Normaliza série para comparação eficiente (string strip)."""
+    return values.astype(str).str.strip()
+
+
+def procv_left_minus_right(
+    df_left: pd.DataFrame,
+    df_right: pd.DataFrame,
+    col_left: str,
+    col_right: str,
+) -> pd.DataFrame:
+    """Retorna linhas de df_left cujas chaves não estão em df_right.
+
+    Implementa anti-join simples usando conjunto de chaves normalizadas para
+    boa performance e legibilidade.
+    """
+
+    if col_left not in df_left.columns:
+        raise ValueError(f"Coluna obrigatória ausente no LEFT: {col_left}")
+    if col_right not in df_right.columns:
+        raise ValueError(f"Coluna obrigatória ausente no RIGHT: {col_right}")
+
+    right_keys: Iterable[str] = set(_normalize_series(df_right[col_right]).dropna())
+    mask = ~_normalize_series(df_left[col_left]).isin(right_keys)
+    return df_left.loc[mask].copy()
+
+
+def procv_max_menos_vic(
+    df_max: pd.DataFrame,
+    df_vic: pd.DataFrame,
+    col_max: str = "PARCELA",
+    col_vic: str = "CHAVE",
+) -> pd.DataFrame:
+    """Retorna K_dev = K_max − K_vic (linhas de MAX não presentes em VIC)."""
+
+    return procv_left_minus_right(df_max, df_vic, col_max, col_vic)
+
+
+def procv_vic_menos_max(
+    df_vic: pd.DataFrame,
+    df_max: pd.DataFrame,
+    col_vic: str = "CHAVE",
+    col_max: str = "PARCELA",
+) -> pd.DataFrame:
+    """Retorna K_bat = K_vic − K_max (linhas de VIC não presentes em MAX)."""
+
+    return procv_left_minus_right(df_vic, df_max, col_vic, col_max)
+
+
+# =============================================================================
+# FUNÇÕES AUXILIARES GENÉRICAS
+# =============================================================================
 
 def primeiro_valor(series: Optional[pd.Series]) -> Optional[Any]:
     """Retorna o primeiro valor válido (não nulo e não vazio) de uma Series.
@@ -15,16 +103,6 @@ def primeiro_valor(series: Optional[pd.Series]) -> Optional[Any]:
         
     Returns:
         Optional[Any]: Primeiro valor válido encontrado ou None se não houver
-        
-    Examples:
-        >>> import pandas as pd
-        >>> s = pd.Series([None, '', 'valor1', 'valor2'])
-        >>> primeiro_valor(s)
-        'valor1'
-        
-        >>> s_empty = pd.Series([None, '', 'nan'])
-        >>> primeiro_valor(s_empty)
-        None
     """
     if series is None:
         return None
@@ -48,17 +126,6 @@ def normalizar_data_string(valor: Any) -> Optional[str]:
         
     Returns:
         Optional[str]: Data normalizada no formato dd/mm/yyyy ou None se inválida
-        
-    Examples:
-        >>> from datetime import datetime
-        >>> normalizar_data_string("2024-01-15")
-        '15/01/2024'
-        
-        >>> normalizar_data_string(pd.Timestamp("2024-01-15"))
-        '15/01/2024'
-        
-        >>> normalizar_data_string("")
-        None
     """
     if valor is None:
         return None
@@ -88,11 +155,6 @@ def extrair_data_referencia(df: pd.DataFrame, colunas_candidatas: list[str]) -> 
         
     Returns:
         Optional[str]: Data de referência normalizada ou None se não encontrada
-        
-    Examples:
-        >>> df = pd.DataFrame({'DATA_REF': ['2024-01-15'], 'OUTRO': ['valor']})
-        >>> extrair_data_referencia(df, ['DATA_REF', 'DATA_REFERENCIA'])
-        '15/01/2024'
     """
     candidatos = []
     
@@ -169,16 +231,6 @@ def formatar_valor_string(valor: Any) -> str:
         
     Returns:
         str: Valor formatado como string
-        
-    Examples:
-        >>> formatar_valor_string(None)
-        ''
-        
-        >>> formatar_valor_string(123.45)
-        '123.45'
-        
-        >>> formatar_valor_string('  texto  ')
-        'texto'
     """
     if valor is None or (isinstance(valor, float) and pd.isna(valor)):
         return ""
@@ -221,3 +273,110 @@ def formatar_datas_serie(serie: pd.Series, formato: str = "%d/%m/%Y") -> pd.Seri
     valores = pd.to_datetime(serie, errors="coerce", dayfirst=True)
     formatted = valores.dt.strftime(formato)
     return formatted.fillna("")
+
+
+__all__ = [
+    # Funções de texto
+    "normalize_ascii_upper",
+    "digits_only",
+    # Funções de anti-join
+    "procv_left_minus_right",
+    "procv_max_menos_vic",
+    "procv_vic_menos_max",
+    # Funções auxiliares
+    "primeiro_valor",
+    "normalizar_data_string",
+    "extrair_data_referencia",
+    "normalizar_decimal",
+    "formatar_valor_string",
+    "extrair_telefone",
+    "formatar_datas_serie",
+    # Funções de log parsing
+    "clean_extraction_line",
+    "extract_extraction_value",
+    "parse_extraction_summary",
+]
+
+
+# =============================================================================
+# FUNÇÕES DE LOG PARSING (originalmente em log_parser.py)
+# =============================================================================
+
+_TAG_PREFIX_RE = re.compile(r"^\[[^\]]+\]\s*")
+
+_SUMMARY_FIELDS = [
+    ("anexos_encontrados", "📥", "Anexos encontrados"),
+    ("anexos_baixados", "📥", "Anexos baixados"),
+    ("registros", "📊", "Total de registros extraídos"),
+    ("arquivo", "📁", "Arquivo salvo em"),
+    ("tempo", "⏱️", "Tempo de execução"),
+    ("email_data", "📅", "Data/hora do e-mail"),
+]
+
+
+def clean_extraction_line(line: str) -> str:
+    """Remove prefixos e espaços extras de uma linha de log de extração."""
+    return _TAG_PREFIX_RE.sub("", line).strip()
+
+
+def extract_extraction_value(line: str) -> str:
+    """Extrai valor após ':' de uma linha."""
+    if ":" not in line:
+        return ""
+    return line.split(":", 1)[1].strip()
+
+
+def parse_extraction_summary(stdout: str) -> tuple[dict[str, str], list]:
+    """Parseia saída de script de extração e retorna resumo + avisos."""
+    resumo: dict[str, str] = {}
+    avisos: list = []
+
+    for linha in stdout.splitlines():
+        trecho = linha.strip()
+        if not trecho:
+            continue
+
+        limpa = clean_extraction_line(trecho)
+        if not limpa:
+            continue
+
+        if all(char == "=" for char in limpa):
+            continue
+
+        texto_minusculo = limpa.lower()
+
+        if "[aviso]" in linha.lower():
+            avisos.append(limpa)
+
+        if "anexos encontrados" in texto_minusculo:
+            resumo["anexos_encontrados"] = extract_extraction_value(limpa)
+            continue
+
+        if "anexos baixados" in texto_minusculo:
+            resumo["anexos_baixados"] = extract_extraction_value(limpa)
+            continue
+
+        if any(
+            palavra in texto_minusculo
+            for palavra in ("registros extra", "registros encontrados", "registros únicos")
+        ):
+            resumo["registros"] = extract_extraction_value(limpa)
+            continue
+
+        if any(
+            palavra in texto_minusculo
+            for palavra in ("arquivo salvo", "arquivo gerado", "caminho")
+        ):
+            valor = extract_extraction_value(limpa)
+            if valor:
+                resumo["arquivo"] = valor
+            continue
+
+        if "tempo de execução" in texto_minusculo:
+            resumo["tempo"] = extract_extraction_value(limpa)
+            continue
+
+        if "data/hora" in texto_minusculo:
+            resumo["email_data"] = extract_extraction_value(limpa)
+
+    return resumo, avisos

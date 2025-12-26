@@ -1,8 +1,8 @@
-﻿"""Processador da etapa de Baixa (VIC â†“ Ã— MAX â†‘).
+﻿"""Processador da etapa de Baixa (VIC ↔ × MAX →).
 
-ResponsÃ¡vel por identificar parcelas baixadas na VIC que ainda constam
-em aberto na base MAX. A saÃ­da Ã© o layout ``vic_baixa`` dividido em
-duas planilhas (judicial e extrajudicial) conforme o padrÃ£o utilizado
+Responsável por identificar parcelas baixadas na VIC que ainda constam
+em aberto na base MAX. A saída é o layout ``vic_baixa`` dividido em
+duas planilhas (judicial e extrajudicial) conforme o padrão utilizado
 pelas demais etapas do pipeline.
 """
 
@@ -25,7 +25,7 @@ from src.utils import get_logger, log_section, digits_only, formatar_datas_serie
 
 @dataclass(frozen=True)
 class _ExportPaths:
-    """Convenience structure for diretÃ³rios/prefixos de exportaÃ§Ã£o."""
+    """Convenience structure for diretórios/prefixos de exportação."""
 
     prefix: str
     base_subdir: str
@@ -179,7 +179,7 @@ class BaixaProcessor:
             if coluna in df.columns:
                 return df[coluna]
         raise ValueError(
-            f"Nenhuma das colunas {candidatos} encontrada. DisponÃ­veis: {list(df.columns)}"
+            f"Nenhuma das colunas {candidatos} encontrada. Disponíveis: {list(df.columns)}"
         )
 
     def _combinar_chave(
@@ -187,7 +187,7 @@ class BaixaProcessor:
     ) -> pd.Series:
         if not combinacao:
             raise ValueError(
-                f"CombinaÃ§Ã£o de chave nÃ£o configurada para {dataset}."
+                f"Combinação de chave não configurada para {dataset}."
             )
         partes: list[pd.Series] = []
         for grupo in combinacao:
@@ -407,7 +407,7 @@ class BaixaProcessor:
 
             if not judicial_file.exists():
                 self.logger.warning(
-                    "Arquivo de clientes judiciais nÃ£o encontrado: %s",
+                    "Arquivo de clientes judiciais não encontrado: %s",
                     judicial_file,
                 )
                 return
@@ -557,23 +557,23 @@ class BaixaProcessor:
             "duracao": duracao,
         }
 
-        log_section(self.logger, "BAIXA - VIC â†“ Ã— MAX â†‘")
-        print("ðŸ“Œ Etapa 5 â€” Baixa VIC baixado Ã— MAX em aberto")
+        log_section(self.logger, "BAIXA - VIC ↔ × MAX →")
+        print("📌 Etapa 5 — Baixa VIC baixado × MAX em aberto")
         print("")
-        print("VIC (baixado) apÃ³s filtros sequenciais:")
-        print(f"   â€¢ Registros iniciais: {stats['vic_registros_iniciais']:,}")
-        print(f"   â€¢ ApÃ³s STATUS=BAIXADO: {stats['vic_apos_status']:,}")
-        print(f"   â€¢ ApÃ³s tipos vÃ¡lidos: {stats['vic_apos_tipos']:,}")
-        print(f"   â€¢ ApÃ³s aging: {stats['vic_apos_aging']:,}")
-        print(f"   â€¢ ApÃ³s blacklist: {stats['vic_apos_blacklist']:,}")
+        print("VIC (baixado) após filtros sequenciais:")
+        print(f"   • Registros iniciais: {stats['vic_registros_iniciais']:,}")
+        print(f"   • Após STATUS=BAIXADO: {stats['vic_apos_status']:,}")
+        print(f"   • Após tipos válidos: {stats['vic_apos_tipos']:,}")
+        print(f"   • Após aging: {stats['vic_apos_aging']:,}")
+        print(f"   • Após blacklist: {stats['vic_apos_blacklist']:,}")
         print("")
-        print("MAX (aberto) apÃ³s filtros sequenciais:")
-        print(f"   â€¢ Registros iniciais: {stats['max_registros_iniciais']:,}")
-        print(f"   â€¢ ApÃ³s STATUS em aberto: {stats['max_apos_status']:,}")
+        print("MAX (aberto) após filtros sequenciais:")
+        print(f"   • Registros iniciais: {stats['max_registros_iniciais']:,}")
+        print(f"   • Após STATUS em aberto: {stats['max_apos_status']:,}")
         print("")
         print(f"Parcelas divergentes (baixado x aberto): {stats['divergencias']:,}")
         print(
-            "DivisÃ£o carteira â†’ Judicial: {jud:,} | Extrajudicial: {ext:,}".format(
+            "Divisão carteira → Judicial: {jud:,} | Extrajudicial: {ext:,}".format(
                 jud=stats["judicial"], ext=stats["extrajudicial"]
             )
         )
@@ -586,10 +586,9 @@ class BaixaProcessor:
             ]
             nomes = [nome for nome in nomes if nome]
             if nomes:
-                print(f"ðŸ“¦ Exportado: {stats['arquivo_zip']} ({', '.join(nomes)})")
+                print(f"📦 Exportado: {stats['arquivo_zip']} ({', '.join(nomes)})")
             else:
-                print(f"ðŸ“¦ Exportado: {stats['arquivo_zip']}")
-        print(f"â±ï¸DuraÃ§Ã£o: {duracao:.2f}s")
+                print(f"📦 Exportado: {stats['arquivo_zip']}")
+        print(f"⏱️ Duração: {duracao:.2f}s")
 
         return stats
-

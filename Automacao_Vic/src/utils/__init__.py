@@ -1,19 +1,25 @@
 """Utilitários compartilhados do projeto VIC."""
 
 from .aging import filtrar_clientes_criticos
-from .anti_join import (
+from .helpers import (
+    # Funções de texto (originalmente text.py)
+    normalize_ascii_upper,
+    digits_only,
+    # Funções de anti-join (originalmente anti_join.py)
     procv_left_minus_right,
     procv_max_menos_vic,
     procv_vic_menos_max,
-)
-from .text import normalize_ascii_upper, digits_only
-from .helpers import (
+    # Funções auxiliares genéricas
     primeiro_valor,
     normalizar_data_string,
     extrair_data_referencia,
     formatar_valor_string,
     extrair_telefone,
     formatar_datas_serie,
+    # Funções de log parsing (originalmente log_parser.py)
+    parse_extraction_summary,
+    clean_extraction_line,
+    extract_extraction_value,
 )
 from .filters import VicFilterApplier
 from .logger import get_logger, log_section
@@ -31,6 +37,9 @@ __all__ = [
     "formatar_valor_string",
     "extrair_telefone",
     "formatar_datas_serie",
+    "parse_extraction_summary",
+    "clean_extraction_line",
+    "extract_extraction_value",
     "VicFilterApplier",
     "get_logger",
     "log_section",

@@ -1,10 +1,10 @@
-﻿"""Processador responsÃ¡vel por gerar o layout de enriquecimento VIC.
+﻿"""Processador responsável por gerar o layout de enriquecimento VIC.
 
 Ele consome a base tratada (`vic_base_limpa`) e o resultado do batimento
-(`vic_batimento_*.csv`) para montar o arquivo canÃ´nico esperado pelo
-fornecedor de enriquecimento. A lÃ³gica privilegia reutilizaÃ§Ã£o das colunas
+(`vic_batimento_*.csv`) para montar o arquivo canônico esperado pelo
+fornecedor de enriquecimento. A lógica privilegia reutilização das colunas
 auxiliares criadas no tratamento (CPF/CNPJ e telefones limpos), evitando
-reprocessamentos ou duplicaÃ§Ãµes nas etapas seguintes do pipeline.
+reprocessamentos ou duplicações nas etapas seguintes do pipeline.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from src.config.loader import ConfigLoader
 from src.core.file_manager import FileManager
 from src.core.packager import ExportacaoService
 from src.utils.logger import get_logger, log_section
-from src.utils.text import digits_only
+from src.utils.helpers import digits_only
 from src.utils.helpers import (
     primeiro_valor, normalizar_data_string, extrair_data_referencia,
     formatar_valor_string, extrair_telefone
@@ -151,7 +151,7 @@ class EnriquecimentoVicProcessor:
         }
 
         log_section(self.logger, "ENRIQUECIMENTO - VIC")
-        print("ðŸ“Œ Etapa 4 â€” Enriquecimento de Contato")
+        print("📌 Etapa 4 — Enriquecimento de Contato")
         print("")
         print(f"Registros recebidos do batimento: {len(df_batimento):,}")
         if df_batimento.empty:
@@ -164,7 +164,7 @@ class EnriquecimentoVicProcessor:
                 )
             )
             print(
-                "Registros VIC com contato elegivel (apos casamento com batimento): {total:,}".format(
+                "Registros VIC com contato elegível (após casamento com batimento): {total:,}".format(
                     total=len(df_vic_enriq)
                 )
             )
@@ -183,8 +183,8 @@ class EnriquecimentoVicProcessor:
         if caminho_zip:
             print(f"Exportado: {caminho_zip}")
         else:
-            print("Nenhum arquivo gerado (sem contatos validos)")
-        print(f"Duracao: {duracao:.2f}s")
+            print("Nenhum arquivo gerado (sem contatos válidos)")
+        print(f"Duração: {duracao:.2f}s")
 
         return stats
 
@@ -210,8 +210,8 @@ class EnriquecimentoVicProcessor:
         return prioridade
 
     # ------------------------------------------------------------------
-    # FunÃ§Ãµes auxiliares movidas para src.utils.helpers
-    # Mantidas aqui apenas para compatibilidade com testes e outros mÃ³dulos
+    # Funções auxiliares movidas para src.utils.helpers
+    # Mantidas aqui apenas para compatibilidade com testes e outros módulos
     @staticmethod
     def _primeiro_valor(series: Optional[pd.Series]) -> Optional[Any]:
         """DEPRECATED: Use src.utils.helpers.primeiro_valor"""
@@ -237,12 +237,12 @@ class EnriquecimentoVicProcessor:
 
     # ------------------------------------------------------------------
     def _carregar_vic_base(self, arquivo_zip: Path) -> pd.DataFrame:
-        """LÃª a base tratada produzida pelo VicProcessor."""
+        """Lê a base tratada produzida pelo VicProcessor."""
 
         with zipfile.ZipFile(arquivo_zip, "r") as zf:
             if self.vic_csv_name not in zf.namelist():
                 raise ValueError(
-                    f"Arquivo {self.vic_csv_name} nÃ£o encontrado no ZIP {arquivo_zip}"
+                    f"Arquivo {self.vic_csv_name} não encontrado no ZIP {arquivo_zip}"
                 )
             with zf.open(self.vic_csv_name) as fh:
                 df = pd.read_csv(
@@ -256,7 +256,7 @@ class EnriquecimentoVicProcessor:
 
     # ------------------------------------------------------------------
     def _carregar_batimento(self, arquivo_zip: Path) -> Tuple[pd.DataFrame, Dict[str, int]]:
-        """LÃª todos os CSVs gerados pelo batimento (judicial/extrajudicial)."""
+        """Lê todos os CSVs gerados pelo batimento (judicial/extrajudicial)."""
 
         with zipfile.ZipFile(arquivo_zip, "r") as zf:
             csv_files = [
@@ -330,7 +330,7 @@ class EnriquecimentoVicProcessor:
 
         relacionados = relacionados.fillna("")
 
-        # Garante que cada CPF apareÃ§a ao menos uma vez, mantendo informaÃ§Ãµes do batimento
+        # Garante que cada CPF apareça ao menos uma vez, mantendo informações do batimento
         relacionados.sort_values(
             by=["CPF_BATIMENTO_LIMPO", "__origem__"], inplace=True
         )
@@ -475,7 +475,7 @@ class EnriquecimentoVicProcessor:
 
     @staticmethod
     def _telefone_valido(telefone: str) -> bool:
-        """Valida tamanho mÃ­nimo/mÃ¡ximo para telefone (DDD + nÃºmero)."""
+        """Valida tamanho mínimo/máximo para telefone (DDD + número)."""
 
         tamanho = len(telefone)
         return tamanho in (10, 11)

@@ -1,4 +1,4 @@
-﻿"""Processador MAX conforme manual tÃ©cnico (tratamento e validaÃ§Ã£o)."""
+﻿"""Processador MAX conforme manual técnico (tratamento e validação)."""
 
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ class MaxProcessor:
         self.file_manager.validar_arquivo_existe(caminho_arquivo)
         return self.file_manager.ler_csv_ou_zip(caminho_arquivo)
 
-    # -------------- PadronizaÃ§Ã£o e ValidaÃ§Ã£o --------------
+    # -------------- Padronização e Validação --------------
     def padronizar_campos(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         mapping = self.columns_config.get('mapping', {})
@@ -79,9 +79,9 @@ class MaxProcessor:
         )
         missing = [c for c in required if c not in df.columns]
         if missing:
-            raise ValueError(f"Colunas obrigatÃ³rias ausentes na base MAX: {missing}")
+            raise ValueError(f"Colunas obrigatórias ausentes na base MAX: {missing}")
 
-        # Padroniza PARCELA para futura criaÃ§Ã£o da CHAVE
+        # Padroniza PARCELA para futura criação da CHAVE
         df['PARCELA'] = df['PARCELA'].astype(str).str.strip()
 
         # Datas e docs
@@ -100,7 +100,7 @@ class MaxProcessor:
 
         df['CPFCNPJ_CLIENTE'] = df['CPFCNPJ_CLIENTE'].astype(str).str.strip()
         
-        # Formatar valores com vÃ­rgula como separador decimal
+        # Formatar valores com vírgula como separador decimal
         if 'VALOR' in df.columns:
             df['VALOR'] = df['VALOR'].apply(self._formatar_valor_decimal)
         
@@ -129,10 +129,10 @@ class MaxProcessor:
 
         orig = len(df)
 
-        # PadronizaÃ§Ã£o
+        # Padronização
         df = self.padronizar_campos(df)
 
-        # ValidaÃ§Ã£o
+        # Validação
         df_val, df_inv = self.validar_dados(df)
 
         if not df_inv.empty and 'motivo_inconsistencia' not in df_inv.columns:
@@ -156,7 +156,7 @@ class MaxProcessor:
                 df_inv = pd.concat([df_inv, df_tipo], ignore_index=False)
                 df_val = df_val.loc[~mask_tipo_vazio].copy()
 
-        # MAX nÃ£o cria CHAVE; mantÃ©m PARCELA como chave nativa
+        # MAX não cria CHAVE; mantém PARCELA como chave nativa
         df_final = df_val.copy()
 
         # Export (ZIP com CSV)
@@ -168,7 +168,7 @@ class MaxProcessor:
             subdir='max_tratada'
         )
 
-        # InconsistÃªncias
+        # Inconsistências
         arquivo_inconsistencias = None
         if len(df_inv) > 0:
             df_inc = self.inconsistencia_manager.criar_dataframe_inconsistencias(df_inv)
@@ -192,18 +192,17 @@ class MaxProcessor:
             'duracao': duracao,
         }
 
-        # Logs â€“ pretty summary
+        # Logs — pretty summary
         log_section(self.logger, "TRATAMENTO - MAX")
-        print("ðŸ“Œ Etapa 2 â€” Tratamento MAX")
+        print("📌 Etapa 2 — Tratamento MAX")
         print("")
         print(f"Registros originais: {orig:,}")
-        print(f"InconsistÃªncias iniciais (PARCELA invÃ¡lida): {len(df_inv):,}")
-        print(f"Registros vÃ¡lidos: {len(df_val):,}")
+        print(f"Inconsistências iniciais (PARCELA inválida): {len(df_inv):,}")
+        print(f"Registros válidos: {len(df_val):,}")
         print(f"Registros finais MAX tratados: {len(df_final):,}")
-        print(f"ðŸ”¹ Taxa de aproveitamento: {taxa_ap:.1f}%")
+        print(f"🔹 Taxa de aproveitamento: {taxa_ap:.1f}%")
         print("")
-        print(f"ðŸ“¦ Exportado: {arquivo_saida}")
-        print(f"â±ï¸DuraÃ§Ã£o: {duracao:.1f}s")
+        print(f"📦 Exportado: {arquivo_saida}")
+        print(f"⏱️ Duração: {duracao:.1f}s")
 
         return stats
-
