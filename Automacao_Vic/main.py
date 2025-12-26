@@ -541,107 +541,61 @@ class PipelineOrchestrator:
                     continue
 
     def extrair_bases(self) -> Dict[str, Any]:
-        """Executa extração das bases VIC (email), MAX (DB) e Judicial (DB)."""
+        """Executa extração das bases VIC (email), MAX (DB) e Judicial (DB).
+        
+        Usa as classes consolidadas de src/core/extractor.py.
+        """
+        from src.core.extractor import VicEmailExtractor, MaxDBExtractor, JudicialDBExtractor
+        
         print("\n" + "=" * 60)
-        print("EXTRACAO DE BASES - VIC, MAX E JUDICIAL")
+        print("EXTRAÇÃO DE BASES - VIC, MAX E JUDICIAL")
         print("=" * 60)
 
         inicio = datetime.now()
         resultados: Dict[str, Any] = {}
-        scripts_dir = Path(__file__).parent / "scripts"
-
-        scripts = [
-            ("extrair_email.py", "VIC (Email)"),
-            ("extrair_basemax.py", "MAX (DB)"),
-            ("extrair_judicial.py", "Judicial (DB)"),
-        ]
-
-        for script_name, descricao in scripts:
-            script_path = scripts_dir / script_name
-
-            if not script_path.exists():
-                self.logger.error("Script não encontrado: %s", script_path)
-                resultados[script_name] = {"status": "erro", "erro": "Script não encontrado"}
-                continue
-
-            print(f"\nExecutando extração {descricao}...")
-
-            try:
-                env = dict(os.environ)
-                src_path = str(Path(__file__).parent / "src")
-                env["PYTHONPATH"] = f"{src_path}{os.pathsep}{env.get('PYTHONPATH', '')}".rstrip(os.pathsep)
-                env["PYTHONIOENCODING"] = "utf-8"
-                env["PYTHONUTF8"] = "1"
-
-                result = subprocess.run(
-                    [sys.executable, str(script_path)],
-                    cwd=Path(__file__).parent,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    env=env,
-                )
-
-                stdout = result.stdout or ""
-                stderr = result.stderr or ""
-
-                if result.returncode == 0:
-                    resumo, avisos = parse_extraction_summary(stdout)
-                    print(f"✅ {descricao} - Extração concluída com sucesso")
-                    for chave, emoji, rotulo in _SUMMARY_FIELDS:
-                        valor = resumo.get(chave)
-                        if valor:
-                            print(f"   {emoji} {rotulo}: {valor}")
-                    if avisos:
-                        print("   ⚠️ Avisos:")
-                        for aviso in avisos:
-                            print(f"      - {aviso}")
-                    print()
-                    resultados[script_name] = {
-                        "status": "sucesso",
-                        "output": stdout,
-                        "resumo": resumo,
-                        "avisos": avisos,
-                    }
-                else:
-                    print(f"❌ {descricao} - Falha na extração (código {result.returncode})")
-                    if stdout.strip():
-                        print("   📄 Saída (stdout):")
-                        for line in stdout.splitlines():
-                            if line.strip():
-                                print(f"      {line}")
-                    if stderr.strip():
-                        print("   ⚠️ Saída (stderr):")
-                        for line in stderr.splitlines():
-                            if line.strip():
-                                print(f"      {line}")
-                    print()
-                    raise RuntimeError(f"Falha na extração {descricao}. Verifique conexão/VPN e execute novamente.")
-
-            except Exception as exc:
-                raise RuntimeError(f"Falha na extração {descricao}: {exc}")
-
-        # Persistir metadado da data-base VIC (quando disponível)
-        resumo_vic = resultados.get("extrair_email.py", {})
-        if isinstance(resumo_vic, dict):
-            resumo_info = resumo_vic.get("resumo")
-            if isinstance(resumo_info, dict):
-                data_email = resumo_info.get("email_data")
-                if data_email:
-                    self._ultima_data_base_vic = data_email
+        
+        # VIC (Email)
+        print("\nExecutando extração VIC (Email)...")
+        try:
+            vic_extractor = VicEmailExtractor(self.config)
+            vic_path = vic_extractor.extrair()
+            resultados["vic"] = {"status": "sucesso", "arquivo": str(vic_path) if vic_path else None}
+        except Exception as exc:
+            print(f"❌ Falha na extração VIC: {exc}")
+            raise RuntimeError(f"Falha na extração VIC: {exc}")
+        
+        # MAX (DB)
+        print("\n\nExecutando extração MAX (DB)...")
+        try:
+            max_extractor = MaxDBExtractor(self.config)
+            max_path = max_extractor.extrair()
+            resultados["max"] = {"status": "sucesso", "arquivo": str(max_path) if max_path else None}
+        except Exception as exc:
+            print(f"❌ Falha na extração MAX: {exc}")
+            raise RuntimeError(f"Falha na extração MAX: {exc}")
+        
+        # Judicial (DB)
+        print("\n\nExecutando extração Judicial (DB)...")
+        try:
+            judicial_extractor = JudicialDBExtractor(self.config)
+            judicial_path = judicial_extractor.extrair()
+            resultados["judicial"] = {"status": "sucesso", "arquivo": str(judicial_path) if judicial_path else None}
+        except Exception as exc:
+            print(f"❌ Falha na extração Judicial: {exc}")
+            raise RuntimeError(f"Falha na extração Judicial: {exc}")
 
         duracao = (datetime.now() - inicio).total_seconds()
-        sucessos = len(resultados)
+        sucessos = sum(1 for r in resultados.values() if r.get("status") == "sucesso")
 
-        print(f"\n[INFO] Extração concluída em {duracao:.2f}s – {sucessos} de {len(scripts)} etapas concluídas")
+        print(f"\n[INFO] Extração concluída em {duracao:.2f}s – {sucessos} de 3 etapas concluídas")
 
         return {
             'duracao_total': duracao,
-            'scripts_executados': len(scripts),
+            'scripts_executados': 3,
             'sucessos': sucessos,
             'resultados': resultados,
         }
+
 
 def main():
     """Função principal do orquestrador."""

@@ -15,7 +15,7 @@ from src.config.loader import ConfigLoader
 from src.utils.logger import get_logger
 from src.utils.queries_sql import get_query
 from src.utils.sql_conn import get_std_connection
-from src.utils.aging import filtrar_clientes_criticos
+from src.utils.helpers import filtrar_clientes_criticos
 from src.utils.helpers import digits_only
 
 

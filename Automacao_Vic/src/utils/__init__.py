@@ -1,6 +1,5 @@
 """Utilitários compartilhados do projeto VIC."""
 
-from .aging import filtrar_clientes_criticos
 from .helpers import (
     # Funções de texto (originalmente text.py)
     normalize_ascii_upper,
@@ -16,6 +15,8 @@ from .helpers import (
     formatar_valor_string,
     extrair_telefone,
     formatar_datas_serie,
+    # Funções de aging (originalmente aging.py)
+    filtrar_clientes_criticos,
     # Funções de log parsing (originalmente log_parser.py)
     parse_extraction_summary,
     clean_extraction_line,
