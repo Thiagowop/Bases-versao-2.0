@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary":  "Documentação completa e detalhada do processo VIC, incluindo as 4 etapas principais (Extração, Tratamento, Devolução, Batimento), regras de validação com filtros de aging e blacklist, bases cruzadas, layouts de saída, fl uxo híbrido v2.0 e instruções para replicação exata do processo.",
+  "updatedAt":  "2025-12-26T00:53:58.789410900Z"
+}

@@ -1,0 +1,411 @@
+# 📋 GUIA COMPLETO: PROCESSO TABELIONATO
+
+**Objetivo:** Documentar com riqueza de detalhes todo o processo realizado no sistema Tabelionato, permitindo replicação exata com chance zero de erro.
+
+> ⚠️ **IMPORTANTE:** Esta documentação foi validada diretamente no código-fonte em 25/12/2025.
+
+---
+
+## 🎯 VISÃO GERAL
+
+O Sistema Tabelionato é uma pipeline de processamento de dados de protestos que automatiza extração, tratamento e cruzamento de dados. O sistema possui **4 etapas principais**:
+
+```mermaid
+flowchart LR
+    E[1. EXTRAÇÃO] --> T[2. TRATAMENTO]
+    T --> M[3. TRATAMENTO MAX]
+    M --> B[4. BATIMENTO]
+```
+
+| Etapa | Objetivo | Resultado |
+|-------|----------|-----------|
+| 1. Extração | Coletar dados de email e SQL | Arquivos ZIP em `data/input/` |
+| 2. Tratamento | Normalizar, validar e classificar | `tabelionato_tratado.zip` |
+| 3. Tratamento MAX | Processar base MAX | `max_tratada.zip` |
+| 4. Batimento | Identificar protocolos ausentes no MAX | Arquivos por campanha (58, 78, 94) |
+
+---
+
+## 📂 ESTRUTURA DE ARQUIVOS
+
+### Diretórios de Entrada (`data/input/`)
+```
+data/input/
+├── tabelionato/                # Dados Tabelionato (Email)
+│   └── Tabelionato.zip         # Base principal (ZIP protegido)
+├── max/                        # Dados MAX (SQL Server)
+│   └── MaxSmart.zip            # Base de cobrança MAX
+└── judicial/                   # (Opcional) Clientes judiciais
+```
+
+### Diretórios de Saída (`data/output/`)
+```
+data/output/
+├── tabelionato_tratada/        # Base Tabelionato tratada
+│   └── tabelionato_tratado.zip
+├── max_tratada/                # Base MAX tratada
+│   └── max_tratada.zip
+├── inconsistencias/            # Registros inconsistentes
+│   └── tabelionato_inconsistencias.zip
+├── batimento/                  # Resultado do batimento por campanha
+│   ├── batimento_campanha58.zip
+│   ├── batimento_campanha78.zip
+│   └── batimento_campanha94.zip
+└── enriquecimento/             # Tabela de enriquecimento
+    └── tabela_enriquecimento.zip
+```
+
+---
+
+## 📥 ETAPA 1: EXTRAÇÃO DE DADOS
+
+### 1.1 Extração Tabelionato (Email/IMAP)
+
+**Arquivo:** `src/extrair_base_tabelionato.py`  
+**Comando:** Via `fluxo_completo.bat`
+
+#### Fonte de Dados
+| Item | Valor |
+|------|-------|
+| **Origem** | Email via IMAP (Gmail) |
+| **Remetente** | `adriano@4protestobh.com` |
+| **Assunto** | Contém "Base de Dados" |
+| **Anexo** | ZIP com dados de protesto |
+| **Senha ZIP** | `Mf4tab@` |
+| **Destino** | `data/input/tabelionato/Tabelionato.zip` |
+
+---
+
+### 1.2 Extração MAX (Banco SQL Server)
+
+**Arquivo:** `src/extracao_base_max_tabelionato.py`  
+**Comando:** Via `fluxo_completo.bat`
+
+| Item | Valor |
+|------|-------|
+| **Origem** | SQL Server (MaxSmart) |
+| **Destino** | `data/input/max/MaxSmart.zip` |
+
+---
+
+## 🔧 ETAPA 2: TRATAMENTO TABELIONATO
+
+**Arquivo:** `src/tratamento_tabelionato.py`  
+**Classe:** `TabelionatoProcessor`
+
+### Fluxo de Processamento
+
+```mermaid
+flowchart TD
+    A[1. Carregar ZIP protegido] --> B[2. Normalizar cabeçalhos]
+    B --> C[3. Normalizar DtAnuencia]
+    C --> D[4. Calcular AGING]
+    D --> E[5. Formatar CPF/CNPJ]
+    E --> F[6. Criar CHAVE a partir de Protocolo]
+    F --> G[7. Atribuir Campanha por aging]
+    G --> H[8. Validar dados]
+    H --> I[9. Exportar inconsistências]
+    I --> J[10. Exportar resultado tratado]
+```
+
+### 2.1 Carregamento (ZIP Protegido)
+
+```python
+# Senha do ZIP:
+self.zip_password = b"Mf4tab@"
+```
+
+> O arquivo ZIP chega protegido por senha. O sistema descompacta automaticamente.
+
+### 2.2 Normalização de DtAnuencia
+
+```python
+# Conversão para datetime, removendo componente de hora:
+dt_anuencia = pd.to_datetime(df['DtAnuencia'], errors='coerce', dayfirst=True)
+dt_anuencia = dt_anuencia.dt.normalize()
+df['DtAnuencia'] = dt_anuencia
+```
+
+### 2.3 Cálculo de AGING ⭐ IMPORTANTE
+
+```python
+# Fórmula:
+AGING = (data_referencia - DtAnuencia).days
+
+# Data de referência: hoje (se não configurada)
+referencia = pd.Timestamp.now().normalize()
+
+# Aging negativo é normalizado para 0
+aging = aging.where(aging >= 0, 0)
+```
+
+**Tipo de dado:** `Int64` (nullable integer)
+
+### 2.4 Formatação CPF/CNPJ
+
+```python
+# Remove espaços e reaaplica máscara:
+# CPF: 123.456.789-01
+# CNPJ: 12.345.678/0001-90
+```
+
+### 2.5 Criação de CHAVE
+
+```python
+# CHAVE = Protocolo (string)
+df['CHAVE'] = df['Protocolo'].astype(str).str.strip()
+```
+
+> A coluna `CHAVE` é criada diretamente a partir do campo `Protocolo`.
+
+### 2.6 Atribuição de Campanha ⭐ REGRA CRÍTICA
+
+| Condição | Campanha |
+|----------|----------|
+| AGING ≤ 1800 dias | **Campanha 58** |
+| AGING > 1800 dias | **Campanha 94** |
+| Protocolos com aging misto | **Campanha 58** (prioridade) |
+
+**Regra especial de aging misto:**
+```python
+# Se um protocolo possui registros TANTO ≤1800 QUANTO >1800:
+# → TODOS os registros desse protocolo vão para Campanha 58
+```
+
+### 2.7 Validação de Dados
+
+**Inconsistências detectadas:**
+1. ❌ `DtAnuencia` vazia ou nula
+2. ❌ `DtAnuencia` com formato inválido
+3. ❌ `DtAnuencia` anterior a 1900
+4. ❌ Campos textuais com quebras de linha (`\r\n`)
+
+**Campos obrigatórios implícitos:**
+- `Protocolo` (para criar CHAVE)
+- `DtAnuencia` (para calcular AGING)
+
+### 2.8 Arquivos de Saída
+
+| Arquivo | Conteúdo |
+|---------|----------|
+| `tabelionato_tratado.zip` | Registros válidos com Campanha |
+| `tabelionato_inconsistencias.zip` | Registros com problemas + Motivo |
+
+---
+
+## 🔧 ETAPA 3: TRATAMENTO MAX
+
+**Arquivo:** `src/tratamento_max.py`
+
+### 3.1 Validação
+
+- Coluna `CHAVE` obrigatória (a partir de `PARCELA`)
+- Filtro por `STATUS_TITULO` = "EM ABERTO" (opcional)
+
+### 3.2 Arquivo de Saída
+
+| Arquivo | Conteúdo |
+|---------|----------|
+| `max_tratada.zip` | Registros válidos |
+
+---
+
+## ⚖️ ETAPA 4: BATIMENTO TABELIONATO × MAX
+
+**Arquivo:** `src/batimento_tabelionato.py`  
+**Classe:** `TabelionatoBatimento`
+
+### Objetivo
+Identificar protocolos presentes no Tabelionato tratado que **NÃO EXISTEM** na base MAX.
+
+> **Fórmula:** `TABELIONATO - MAX` (Anti-Join por CHAVE)
+
+### Fluxo de Processamento
+
+```mermaid
+flowchart TD
+    A[1. Carregar Tabelionato tratado] --> B[2. Carregar MAX tratado]
+    B --> C[3. Carregar MAX bruto para regra campanha 78]
+    C --> D[4. Anti-Join: TABELIONATO - MAX]
+    D --> E[5. Redistribuir para Campanha 78]
+    E --> F[6. Aplicar regra de priorização CNPJ/CPF]
+    F --> G[7. Formatar layout de saída]
+    G --> H[8. Gerar arquivos por campanha]
+```
+
+### 4.1 Operação Anti-Join
+
+```python
+def _procv_tabelionato_menos_max(df_tabelionato, df_max):
+    """Anti-join: protocolos do Tabelionato NÃO presentes no MAX."""
+    max_keys = set(df_max['CHAVE'].astype(str).str.strip().dropna())
+    mask = ~df_tabelionato['CHAVE'].astype(str).str.strip().isin(max_keys)
+    return df_tabelionato.loc[mask].copy()
+```
+
+### 4.2 Regra Campanha 78 ⭐ IMPORTANTE
+
+**Lógica:**
+1. Carrega base MAX bruta (antes do tratamento)
+2. Filtra registros da **Campanha 78** com **status EM ABERTO**
+3. Extrai CPFs/CNPJs desses registros
+4. Se um registro pendente tem CPF/CNPJ que está em aberto na Campanha 78 do MAX → **realoca para Campanha 78**
+
+```python
+# Filtros para identificar documentos da Campanha 78:
+mask_campanha = campanha.str.contains('78', regex=False)
+mask_status = status.isin({'aberto', 'em aberto', 'a', '0'})
+mask_final = mask_doc & mask_campanha & mask_status
+```
+
+### 4.3 Regra de Priorização CNPJ/CPF ⭐ IMPORTANTE
+
+Para protocolos com **múltiplos registros** (CPF e CNPJ):
+
+| Prioridade | Tipo | Tamanho |
+|------------|------|---------|
+| 0 (maior) | CNPJ | 18 caracteres |
+| 1 | CPF | 14 caracteres |
+| 2 (menor) | Outros | demais |
+
+**Resultado:**
+- **Registro principal:** primeiro após ordenação por prioridade
+- **Demais registros:** vão para tabela de **enriquecimento**
+
+```python
+# Ordenação:
+colunas = ['CHAVE', 'PRIORIDADE_DOCUMENTO', 'DtAnuencia']
+ordem = [True, True, False]  # DtAnuencia mais recente primeiro
+```
+
+### 4.4 Layout de Saída
+
+| Coluna | Origem |
+|--------|--------|
+| `Campanha` | Calculada (58, 78, 94) |
+| `CPFCNPJ CLIENTE` | `CpfCnpj` |
+| `NOME / RAZAO SOCIAL` | `Devedor` |
+| `VALOR` | `Custas` (formatado moeda) |
+| `ID NEGOCIADOR` | Vazio |
+| `CNPJ CREDOR` | Fixo: `16.746.133/0001-41` |
+| `PARCELA` | `Protocolo` |
+| `VENCIMENTO` | `DtAnuencia` |
+| `OBSERVACAO CONTRATO` | `Credor` |
+| `NUMERO CONTRATO` | `Protocolo` |
+
+### 4.5 Arquivos de Saída
+
+```
+data/output/batimento/
+├── batimento_campanha58.zip    # Protocolos com aging ≤ 1800 dias
+├── batimento_campanha78.zip    # Protocolos com CPF em aberto na MAX campanha 78
+└── batimento_campanha94.zip    # Protocolos com aging > 1800 dias
+
+data/output/enriquecimento/
+└── tabela_enriquecimento.zip   # Registros duplicados por protocolo
+```
+
+---
+
+## ⚙️ CONFIGURAÇÕES
+
+### Parâmetros Globais
+
+```python
+# Codificação e separadores:
+self.encoding = 'utf-8'
+self.csv_separator = ';'
+
+# Senha do ZIP de entrada:
+self.zip_password = b"Mf4tab@"
+
+# Limite de aging para campanhas:
+# ≤ 1800 dias → Campanha 58
+# > 1800 dias → Campanha 94
+
+# CNPJ do credor (fixo nas saídas):
+CNPJ_CREDOR = '16.746.133/0001-41'
+```
+
+### Variáveis de Ambiente
+
+```properties
+# Email (IMAP)
+EMAIL_USER=seu_email@gmail.com
+EMAIL_PASSWORD=senha_app
+
+# SQL Server
+DB_HOST=servidor
+DB_DATABASE=banco
+DB_USER=usuario
+DB_PASSWORD=senha
+
+# Formatação de valores
+CSV_DECIMAL_SEPARATOR=,
+```
+
+---
+
+## 🚀 COMANDOS DE EXECUÇÃO
+
+### Execução Completa
+
+```bash
+# Via script batch (recomendado):
+fluxo_completo.bat
+```
+
+### Menu Interativo
+
+```bash
+run_tabelionato.bat
+```
+
+**Opções do menu:**
+1. Preparar ambiente
+2. Extração Tabelionato
+3. Extração MAX
+4. Tratamento Tabelionato
+5. Tratamento MAX
+6. Batimento
+7. Fluxo completo
+
+---
+
+## 📊 RESUMO DAS REGRAS DE CAMPANHA
+
+| Campanha | Critério | Prioridade |
+|----------|----------|------------|
+| **58** | AGING ≤ 1800 dias | Principal (inclui aging misto) |
+| **78** | CPF/CNPJ em aberto na MAX campanha 78 | Realocação |
+| **94** | AGING > 1800 dias | Secundária |
+
+---
+
+## 📊 MÉTRICAS TÍPICAS
+
+| Etapa | Entrada | Saída | Taxa |
+|-------|---------|-------|------|
+| Tabelionato tratado | ~50K | ~48K | ~96% |
+| MAX tratado | ~200K | ~190K | ~95% |
+| Batimento | - | ~5K | ~10% |
+
+---
+
+## ✅ CHECKLIST DE REPLICAÇÃO
+
+- [ ] Configurar variáveis de ambiente (`.env`)
+- [ ] Executar `run_tabelionato.bat` opção 1 (preparar ambiente)
+- [ ] Verificar arquivo `Tabelionato.zip` em `data/input/tabelionato/`
+- [ ] Verificar arquivo MAX em `data/input/max/`
+- [ ] Executar `fluxo_completo.bat`
+- [ ] Verificar `data/output/tabelionato_tratada/`
+- [ ] Verificar `data/output/max_tratada/`
+- [ ] Verificar `data/output/batimento/`
+- [ ] Conferir arquivos por campanha (58, 78, 94)
+- [ ] Conferir tabela de enriquecimento
+
+---
+
+*Documentação gerada em: 25/12/2025*  
+*Projeto: Tabelionato - Sistema de Processamento de Dados de Protestos*

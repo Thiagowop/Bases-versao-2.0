@@ -1,0 +1,259 @@
+# Tabelionato Client Configuration
+# Unified Pipeline System
+
+name: tabelionato
+version: "1.0"
+description: "Tabelionato Processing Pipeline - Carteira de registros de cartório"
+
+# Data source: Client data (Tabelionato)
+client_source:
+  loader:
+    type: file
+    params:
+      path: "../Bases referencia/Automacao_Tabelionato/data/input/tabelionato/Tabelionato.zip"
+      password: "Mf4tab@"
+      encoding: "utf-8"
+      separator: ";"
+
+  # Key generation - CHAVE = PROTOCOLO (single column)
+  key:
+    type: column
+    column: PROTOCOLO
+    output_column: CHAVE
+
+  # Column mapping: Tabelionato original columns -> Standardized names
+  # Original columns: PROTOCOLO, VRTITULO, DTANUENCIA, DEVEDOR, ENDERECO, CIDADE, CEP, CPFCNPJ, INTIMADO, CUSTAS, CREDOR, DATAEXTRACAO
+  columns:
+    CPFCNPJ: CPF_CNPJ
+    PROTOCOLO: PROTOCOLO
+    VRTITULO: VALOR_TITULO
+    DTANUENCIA: VENCIMENTO
+    DEVEDOR: NOME
+    ENDERECO: ENDERECO
+    CIDADE: CIDADE
+    CEP: CEP
+    INTIMADO: INTIMADO
+    CUSTAS: CUSTAS
+    CREDOR: CREDOR
+    DATAEXTRACAO: DATA_EXTRACAO
+
+  required_columns:
+    - PROTOCOLO
+    - CPFCNPJ
+    - CUSTAS
+
+  validators:
+    - type: required
+      enabled: true
+      params:
+        columns:
+          - PROTOCOLO
+          - CPFCNPJ
+          - CUSTAS
+
+    - type: regex
+      enabled: false  # Temporarily disabled - need to implement clean_before
+      params:
+        column: CPFCNPJ
+        pattern: "^\\d{11}$|^\\d{14}$"
+        mode: fullmatch
+        clean_before: true  # Remove non-digits before validation
+
+    - type: linebreak
+      enabled: true
+      params:
+        check_all: true
+        action: clean
+
+    - type: daterange
+      enabled: true
+      params:
+        column: DTANUENCIA
+        min_year: 1900
+        max_year: 2100
+        null_action: invalidate
+
+  splitters: []
+
+  export:
+    filename_prefix: tabelionato
+    format: zip
+    encoding: utf-8
+    separator: ";"
+
+
+# Data source: MAX data
+# Columns: CAMPANHA, CREDOR, CNPJ_CREDOR, CPFCNPJ_CLIENTE, NOME_RAZAO_SOCIAL, 
+#          NUMERO_CONTRATO, PARCELA, MOVIMENTACOES_ID, VENCIMENTO, VALOR, STATUS_TITULO
+max_source:
+  loader:
+    type: file
+    params:
+      path: "../Bases referencia/Automacao_Tabelionato/data/input/max/MaxSmart_Tabelionato.zip"
+      encoding: "utf-8-sig"
+      separator: ";"
+
+  # CHAVE = PARCELA (conforme referência Tabelionato)
+  key:
+    type: column
+    column: PARCELA
+    output_column: CHAVE
+
+  columns:
+    CPFCNPJ_CLIENTE: CPF_CNPJ
+    NOME_RAZAO_SOCIAL: NOME
+    NUMERO_CONTRATO: CONTRATO
+    PARCELA: PARCELA
+    VENCIMENTO: VENCIMENTO
+    VALOR: VALOR
+    STATUS_TITULO: STATUS
+    CAMPANHA: CAMPANHA
+
+  required_columns:
+    - PARCELA
+    - VENCIMENTO
+
+  validators:
+    - type: required
+      enabled: true
+      params:
+        columns:
+          - PARCELA
+          - VENCIMENTO
+
+    # PARCELA validation: não pode ser vazia, conter vírgula, parecer data, conter hífen, ou ser muito curta
+    - type: regex
+      enabled: true 
+      params:
+        column: PARCELA
+        pattern: "^[^,\\-]{2,}$"
+        mode: fullmatch
+        reject_date_pattern: true
+
+    - type: daterange
+      enabled: true
+      params:
+        column: VENCIMENTO
+        min_year: 1900
+        max_year: 2100
+        null_action: invalidate
+
+  splitters: []
+
+
+# Pipeline configuration
+pipeline:
+  processors:
+    - type: tratamento
+      enabled: true
+      params:
+        cpf_columns:
+          - CPF_CNPJ
+        value_columns:
+          - SALDO
+        date_columns:
+          - VENCIMENTO
+        text_columns:
+          - NOME
+          - CARTORIO
+          - CIDADE
+        remove_duplicates: true
+        key_column: CHAVE
+        drop_empty: true
+
+    - type: batimento
+      enabled: true
+      params:
+        client_key: CHAVE
+        max_key: CHAVE
+        compute_a_minus_b: true
+        compute_b_minus_a: true
+        compute_intersection: false
+        export_format: zip
+
+    - type: baixa
+      enabled: true
+      params:
+        client_key: CHAVE
+        max_key: CHAVE
+        export_format: zip
+        add_timestamp: true
+        export_columns:
+          - CPF_CNPJ
+          - PROTOCOLO
+          - CHAVE
+          - CARTORIO
+
+    - type: devolucao
+      enabled: true
+      params:
+        client_key: CHAVE
+        max_key: CHAVE
+        judicial_source: "${JUDICIAL_TABELIONATO_PATH}"
+        judicial_column: CPF_CNPJ
+        target_column: CPF_CNPJ
+        export_format: zip
+        add_timestamp: true
+        add_motivo: true
+        add_data: true
+        select_columns:
+          - CPF_CNPJ
+          - PROTOCOLO
+          - NOME
+          - SALDO
+          - CARTORIO
+          - CIDADE
+          - MOTIVO_DEVOLUCAO
+          - DATA_DEVOLUCAO
+
+    - type: enriquecimento
+      enabled: true
+      params:
+        filename_prefix: tabelionato_novos
+        export_format: zip
+        add_timestamp: true
+        computed_fields:
+          DATA_CARGA:
+            type: date
+            format: "%d/%m/%Y"
+          ORIGEM:
+            type: constant
+            value: "TABELIONATO"
+          TIPO_REGISTRO:
+            type: constant
+            value: "PROTESTO"
+        max_filters:
+          format_cpf: true
+          cpf_column: CPF_CNPJ
+        splitters:
+          - type: field_value
+            enabled: true
+            params:
+              column: CIDADE
+              mode: exact
+              normalize: true
+              mappings:
+                sao_paulo:
+                  - SAO PAULO
+                  - SP
+                rio_janeiro:
+                  - RIO DE JANEIRO
+                  - RJ
+                belo_horizonte:
+                  - BELO HORIZONTE
+                  - BH
+              default_group: outras_cidades
+
+# Global settings
+global:
+  timezone: "America/Sao_Paulo"
+  log_level: "INFO"
+
+# Extension class (optional)
+extension_class: null
+
+# Custom paths
+paths:
+  output_dir: "./output/tabelionato"
+  temp_dir: "./temp/tabelionato"
+  archive_dir: "./archive/tabelionato"

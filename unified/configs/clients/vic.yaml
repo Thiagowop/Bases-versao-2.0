@@ -1,0 +1,251 @@
+# VIC Client Configuration
+# Unified Pipeline System
+
+name: vic
+version: "1.0"
+description: "VIC/MAX Processing Pipeline - Carteira de crédito VIC Engenharia"
+
+# Parâmetros específicos do cliente
+params:
+  empresa_cnpj: "12.086.678/0001-18"
+  mo_cliente_id: 232  # VIC Engenharia
+  campanha_judicial_id: 4
+
+# Data source: Client data (VIC via Email)
+client_source:
+  loader:
+    type: email
+    params:
+      server: "${IMAP_SERVER}"
+      email: "${EMAIL_USER}"
+      password: "${EMAIL_APP_PASSWORD}"
+      sender_filter: "${VIC_EMAIL_SENDER}"
+      subject_filter: "${VIC_EMAIL_SUBJECT}"
+      attachment_pattern: "${VIC_ATTACHMENT_FILENAME}"
+      days_back: 7
+      encoding: "utf-8-sig"
+      separator: ";"
+
+  # Key generation (NUMERO_CONTRATO-PARCELA)
+  key:
+    type: composite
+    components:
+      - NUMERO_CONTRATO
+      - PARCELA
+    separator: "-"
+    output_column: CHAVE
+
+  # Column mappings - colunas do arquivo VIC
+  columns:
+    CPFCNPJ_CLIENTE: CPF_CNPJ
+    NOME_RAZAO_SOCIAL: NOME
+    NUMERO_CONTRATO: NUMERO_CONTRATO
+    PARCELA: PARCELA
+    VENCIMENTO: VENCIMENTO
+    VALOR: VALOR
+    STATUS_TITULO: STATUS_TITULO
+    TIPO_PARCELA: TIPO_PARCELA
+
+  required_columns:
+    - CPFCNPJ_CLIENTE
+    - NUMERO_CONTRATO
+    - PARCELA
+    - VENCIMENTO
+    - VALOR
+
+  validators:
+    - type: required
+      enabled: true
+      params:
+        columns:
+          - CPFCNPJ_CLIENTE
+          - NUMERO_CONTRATO
+          - PARCELA
+
+    - type: status
+      enabled: true
+      params:
+        column: STATUS_TITULO
+        include:
+          - Aberto
+          - EM ABERTO
+        case_sensitive: false
+
+    - type: aging
+      enabled: true
+      params:
+        date_column: VENCIMENTO
+        min_days: 90  # Aging mínimo conforme config referência
+        null_action: include
+
+  splitters: []
+
+  export:
+    filename_prefix: vic
+    format: zip
+    encoding: utf-8-sig
+    separator: ";"
+
+# Data source: MAX data (SQL Server)
+max_source:
+  loader:
+    type: sql
+    params:
+      server: "${MSSQL_SERVER_STD}"
+      database: "${MSSQL_DATABASE_STD}"
+      username: "${MSSQL_USER_STD}"
+      password: "${MSSQL_PASSWORD_STD}"
+      query: |
+        SELECT DISTINCT
+            dbo.RetornaNomeCampanha(MoCampanhasID,1) AS 'CAMPANHA',
+            dbo.RetornaNomeRazaoSocial(MoClientesID) AS 'CREDOR',
+            dbo.RetornaCPFCNPJ(MoClientesID,1) AS 'CNPJ_CREDOR',
+            dbo.RetornaCPFCNPJ(MoInadimplentesID,1) AS 'CPFCNPJ_CLIENTE',
+            dbo.RetornaNomeRazaoSocial(MoInadimplentesID) AS 'NOME_RAZAO_SOCIAL',
+            MoContrato AS 'NUMERO_CONTRATO',
+            MoMatricula AS 'EMPREENDIMENTO',
+            CAST(MoDataCriacaoRegistro AS DATE) AS 'DATA_CADASTRO',
+            MoNumeroDocumento AS 'PARCELA',
+            Movimentacoes_ID AS 'Movimentacoes_ID',
+            MoDataVencimento AS 'VENCIMENTO',
+            MoValorDocumento AS 'VALOR',
+            dbo.RetornaStatusMovimentacao(MoStatusMovimentacao) AS 'STATUS_TITULO',
+            MoTipoDocumento AS 'TIPO_PARCELA'
+        FROM Movimentacoes
+            INNER JOIN Pessoas ON MoInadimplentesID = Pessoas_ID
+        WHERE
+            (MoStatusMovimentacao = 0 OR MoStatusMovimentacao = 1)
+            AND MoClientesID = 232
+            AND MoOrigemMovimentacao in ('C', 'I')
+        ORDER BY dbo.RetornaCPFCNPJ(MoInadimplentesID,1), MoDataVencimento ASC
+
+  key:
+    type: composite
+    components:
+      - NUMERO_CONTRATO
+      - PARCELA
+    separator: "-"
+    output_column: CHAVE
+
+  columns:
+    CPFCNPJ_CLIENTE: CPF_CNPJ
+    NOME_RAZAO_SOCIAL: NOME
+    NUMERO_CONTRATO: NUMERO_CONTRATO
+    PARCELA: PARCELA
+    VENCIMENTO: VENCIMENTO
+    VALOR: VALOR
+    STATUS_TITULO: STATUS_TITULO
+    TIPO_PARCELA: TIPO_PARCELA
+
+  required_columns:
+    - CPFCNPJ_CLIENTE
+    - PARCELA
+    - VENCIMENTO
+
+  validators: []
+  splitters: []
+
+
+# Pipeline configuration
+pipeline:
+  processors:
+    - type: tratamento
+      enabled: true
+      params:
+        cpf_columns:
+          - CPF_CNPJ
+        value_columns:
+          - SALDO
+        date_columns:
+          - VENCIMENTO
+        remove_duplicates: true
+        key_column: CHAVE
+
+    - type: batimento
+      enabled: true
+      params:
+        client_key: CHAVE
+        max_key: CHAVE
+        compute_a_minus_b: true   # novos
+        compute_b_minus_a: true   # baixas
+        compute_intersection: false
+        export_format: zip
+        encoding: utf-8-sig
+        separator: ";"
+
+    - type: baixa
+      enabled: true
+      params:
+        client_key: CHAVE
+        max_key: CHAVE
+        export_format: zip
+        add_timestamp: true
+        export_columns:
+          - CPF_CNPJ
+          - CONTRATO
+          - PARCELA
+          - CHAVE
+
+    - type: devolucao
+      enabled: true
+      params:
+        client_key: CHAVE
+        max_key: CHAVE
+        judicial_source: "${JUDICIAL_FILE_PATH}"
+        judicial_column: CPF_CNPJ
+        target_column: CPF_CNPJ
+        export_format: zip
+        add_timestamp: true
+        add_motivo: true
+        add_data: true
+        select_columns:
+          - CPF_CNPJ
+          - CONTRATO
+          - PARCELA
+          - NOME
+          - SALDO
+          - MOTIVO_DEVOLUCAO
+          - DATA_DEVOLUCAO
+
+    - type: enriquecimento
+      enabled: true
+      params:
+        filename_prefix: vic_novos
+        export_format: zip
+        add_timestamp: true
+        computed_fields:
+          DATA_CARGA:
+            type: date
+            format: "%d/%m/%Y"
+          ORIGEM:
+            type: constant
+            value: "VIC"
+        splitters:
+          - type: campaign
+            enabled: true
+            params:
+              column: CAMPANHA
+              rules:
+                - name: cobranca
+                  patterns:
+                    - COBRANCA
+                    - COB
+                - name: recuperacao
+                  patterns:
+                    - RECUPERACAO
+                    - REC
+              default_group: outros
+
+# Global settings
+global:
+  timezone: "America/Sao_Paulo"
+  log_level: "INFO"
+
+# Extension class (optional - for complex custom logic)
+extension_class: null
+
+# Custom paths
+paths:
+  output_dir: "./output/vic"
+  temp_dir: "./temp/vic"
+  archive_dir: "./archive/vic"

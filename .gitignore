@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+.eggs/
+*.egg-info/
+*.egg
+
+# Dados e saídas (não versionados)
+data/input/
+data/output/
+data/logs/
+data/output_baseline/
+
+# Ambiente
+.env
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Temporários
+*.tmp
+*.temp
+
+# Gemini artifacts
+.gemini/

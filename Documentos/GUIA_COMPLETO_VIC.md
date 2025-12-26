@@ -1,0 +1,588 @@
+# 📋 GUIA COMPLETO: PROCESSO VIC
+
+**Objetivo:** Documentar com riqueza de detalhes todo o processo realizado no sistema VIC/MAX, permitindo replicação exata com chance zero de erro.
+
+> ⚠️ **IMPORTANTE:** Esta documentação foi validada diretamente no código-fonte em 25/12/2025.
+
+---
+
+## 🎯 VISÃO GERAL
+
+O Sistema VIC/MAX é uma pipeline de processamento de dados financeiros que automatiza extração, tratamento e cruzamento de dados. O sistema utiliza um **fluxo híbrido v2.0** com 4 etapas principais:
+
+```mermaid
+flowchart LR
+    E[1. EXTRAÇÃO] --> T[2. TRATAMENTO]
+    T --> D[3. DEVOLUÇÃO]
+    D --> B[4. BATIMENTO]
+```
+
+### Fluxo Híbrido v2.0 ⭐
+
+O sistema usa duas variações da base VIC para diferentes propósitos:
+
+| Variação | Descrição | Uso |
+|----------|-----------|-----|
+| **VIC SEM AGING** | Base completa sem filtro de dias | Usado para **Devolução** (máximo de registros) |
+| **VIC COM AGING** | Base filtrada por >90 dias | Usado para **Batimento** (separação judicial precisa) |
+
+---
+
+## 📂 ESTRUTURA DE ARQUIVOS
+
+### Diretórios de Entrada (`data/input/`)
+```
+data/input/
+├── vic/                        # Dados VIC (Email/IMAP)
+│   └── VicCandiotto.zip        # Base principal VIC
+├── max/                        # Dados MAX (SQL Server)
+│   └── MaxSmart.zip            # Base de cobrança MAX
+├── judicial/                   # Dados judiciais
+│   └── ClientesJudiciais.zip   # CPFs em processo judicial
+└── blacklist/                  # Clientes a excluir
+    └── blacklist.csv/xlsx      # Lista de CPFs bloqueados
+```
+
+### Diretórios de Saída (`data/output/`)
+```
+data/output/
+├── vic_tratada/                # Base VIC tratada
+│   └── vic_base_limpa_YYYYMMDD_HHMMSS.zip
+├── max/                        # Base MAX tratada
+│   └── max_tratada_YYYYMMDD_HHMMSS.zip
+├── inconsistencias/            # Registros inconsistentes
+│   ├── vic_inconsistencias_*.zip
+│   └── max_inconsistencias_*.zip
+├── devolucao/                  # Resultado da devolução
+│   └── vic_devolucao_YYYYMMDD_HHMMSS.zip
+│       ├── vic_devolucao_jud_*.csv
+│       └── vic_devolucao_extra_*.csv
+├── batimento/                  # Resultado do batimento
+│   └── vic_batimento_YYYYMMDD_HHMMSS.zip
+│       ├── vic_batimento_jud_*.csv
+│       └── vic_batimento_extra_*.csv
+└── enriquecimento/             # Contatos enriquecidos
+    └── enriquecimento_vic_*.zip
+```
+
+---
+
+## 📥 ETAPA 1: EXTRAÇÃO DE DADOS
+
+### 1.1 Extração VIC (Email/IMAP)
+
+**Arquivo:** `scripts/extrair_vic_email.py`  
+**Comando:** `python main.py extract vic`
+
+#### Fonte de Dados
+| Item | Valor |
+|------|-------|
+| **Origem** | Email via IMAP (Gmail) |
+| **Remetente** | `noreply@fcleal.com.br` |
+| **Assunto** | Contém "Candiotto" |
+| **Anexo** | `candiotto.zip` |
+| **Destino** | `data/input/vic/VicCandiotto.zip` |
+
+#### Configuração via `config.yaml`
+```yaml
+email:
+  imap_server: imap.gmail.com
+  imap_folder: INBOX
+  email_sender: noreply@fcleal.com.br
+  email_subject_keyword: Candiotto
+  attachment_filename: candiotto.zip
+  output_filename: VicCandiotto.zip
+  download_dir: data/input/vic
+  validation:
+    min_file_size_mb: 1.0  # Base válida ~14MB, erro ~0.07MB
+```
+
+#### Validação de Tamanho
+O sistema valida o tamanho do arquivo para detectar bases corrompidas:
+- ✅ **Base válida:** ~14MB
+- ❌ **Base com erro:** ~0.07MB (será rejeitada)
+
+---
+
+### 1.2 Extração MAX (Banco SQL Server)
+
+**Arquivo:** `scripts/extrair_max_sql.py`  
+**Comando:** `python main.py extract max`
+
+#### Fonte de Dados
+| Item | Valor |
+|------|-------|
+| **Origem** | SQL Server (MaxSmart) |
+| **Parâmetro** | Via variáveis de ambiente |
+| **Destino** | `data/input/max/MaxSmart.zip` |
+
+#### Configuração via `.env`
+```properties
+SQL_SERVER_HOST=servidor
+SQL_SERVER_DATABASE=banco
+SQL_SERVER_USER=usuario
+SQL_SERVER_PASSWORD=senha
+```
+
+---
+
+### 1.3 Extração de Dados Judiciais
+
+**Comando:** `python main.py extract judicial`
+
+| Item | Valor |
+|------|-------|
+| **Origem** | SQL Server |
+| **Destino** | `data/input/judicial/ClientesJudiciais.zip` |
+
+---
+
+## 🔧 ETAPA 2: TRATAMENTO DE DADOS
+
+### 2.1 Tratamento VIC
+
+**Arquivo:** `src/processors/vic_processor.py`  
+**Comando:** `python main.py treat vic`
+
+#### Fluxo de Processamento
+
+```mermaid
+flowchart TD
+    A[1. Carregar VicCandiotto.zip] --> B[2. Normalizar CPF/CNPJ]
+    B --> C[3. Validar colunas obrigatórias]
+    C --> D[4. Exportar inconsistências]
+    D --> E[5. Filtro STATUS = EM ABERTO]
+    E --> F[6. Filtro TIPO_PARCELA]
+    F --> G[7. Calcular AGING]
+    G --> H[8. Filtro AGING por cliente]
+    H --> I[9. Aplicar Blacklist]
+    I --> J[10. Garantir chaves únicas]
+    J --> K[11. Exportar resultado]
+```
+
+#### 2.1.1 Normalização de CPF/CNPJ
+```python
+# Transformação:
+'123.456.789-01'     → '12345678901'
+'12.345.678/0001-90' → '12345678000190'
+```
+
+#### 2.1.2 Campos Obrigatórios
+
+| Coluna | Tipo | Descrição | Exemplo |
+|--------|------|-----------|---------|
+| `CHAVE` | String | ID único (contrato-parcela) | `12345-001` |
+| `CPF_CNPJ` | String | Documento do cliente | `12345678901` |
+| `NOME_CLIENTE` | String | Nome/Razão social | `João Silva` |
+| `STATUS_TITULO` | String | Status da parcela | `EM ABERTO` |
+| `TIPO_PARCELA` | String | Tipo da parcela | `PROSOLUTO` |
+| `VENCIMENTO` | Date | Data de vencimento | `2024-01-15` |
+| `VALOR_PARCELA` | Float | Valor da parcela | `1500.00` |
+
+#### 2.1.3 Filtro de Status
+
+**Regra:** Mantém apenas parcelas com `STATUS_TITULO = 'EM ABERTO'`
+
+```python
+# Configuração (config.yaml):
+vic_processor:
+  status_em_aberto: "EM ABERTO"
+```
+
+#### 2.1.4 Filtro de Tipo de Parcela
+
+**Tipos aceitos:**
+- `PROSOLUTO`
+- `ITBI`
+- `EVOLUCAO DE OBRA`
+
+```yaml
+vic_processor:
+  tipos_validos: ["PROSOLUTO", "ITBI", "EVOLUCAO DE OBRA"]
+```
+
+#### 2.1.5 Cálculo de Aging
+
+```python
+# Fórmula:
+AGING_DIAS = (data_atual - DATA_VENCIMENTO).days
+
+# Regras:
+# - Datas futuras: aging = 0
+# - Datas inválidas: removidas
+```
+
+#### 2.1.6 Filtro de Aging por Cliente ⭐ IMPORTANTE
+
+**Lógica:**
+1. Agrupa por `CPF_CNPJ`
+2. Verifica se cliente tem `max(AGING_DIAS) > 90`
+3. Se SIM → mantém **TODAS** as parcelas do cliente
+4. Se NÃO → remove **TODAS** as parcelas do cliente
+
+```yaml
+vic_processor:
+  aging_minimo: 90  # dias
+```
+
+> **Nota:** Este filtro pode ser habilitado/desabilitado para gerar variações da base VIC.
+
+#### 2.1.7 Aplicação de Blacklist
+
+**Processo:**
+1. Carrega arquivos de `data/input/blacklist/` (CSV ou Excel)
+2. Detecta automaticamente colunas com CPF/CNPJ
+3. Normaliza documentos (remove caracteres especiais)
+4. Remove registros cujo CPF está na blacklist
+
+```yaml
+vic_processor:
+  filtros_inclusao:
+    blacklist: true
+```
+
+#### 2.1.8 Validação de Chaves Únicas
+
+**Estratégia para duplicatas:**
+1. Ordena por `AGING_DIAS` (maior primeiro)
+2. Mantém apenas o primeiro registro de cada `CHAVE`
+3. Exporta duplicatas removidas para auditoria
+
+#### 2.1.9 Arquivos de Saída
+
+| Arquivo | Conteúdo |
+|---------|----------|
+| `vic_base_limpa_YYYYMMDD_HHMMSS.zip` | Registros válidos |
+| `vic_inconsistencias_YYYYMMDD_HHMMSS.zip` | Registros com problemas |
+
+---
+
+### 2.2 Tratamento MAX
+
+**Arquivo:** `src/processors/max_processor.py`  
+**Comando:** `python main.py treat max`
+
+#### 2.2.1 Validação de PARCELA
+
+**Regex de Validação:**
+```regex
+^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+$
+```
+
+**Exemplos:**
+| Valor | Válido? |
+|-------|---------|
+| `12345-01` | ✅ |
+| `ABC-123` | ✅ |
+| `12345` | ❌ (falta hífen) |
+
+#### 2.2.2 Campos Obrigatórios
+
+```yaml
+max_processor:
+  columns:
+    required: ["CPFCNPJ_CLIENTE", "NUMERO_CONTRATO", "PARCELA", "VENCIMENTO", "VALOR"]
+```
+
+#### 2.2.3 Filtros
+
+```yaml
+max_processor:
+  status_em_aberto: "Aberto"
+  validation:
+    remover_parcela_duplicada: true
+```
+
+#### 2.2.4 Arquivos de Saída
+
+| Arquivo | Conteúdo |
+|---------|----------|
+| `max_tratada_YYYYMMDD_HHMMSS.zip` | Registros válidos |
+| `max_inconsistencias_YYYYMMDD_HHMMSS.zip` | Registros com problemas |
+
+---
+
+## 🔁 ETAPA 3: DEVOLUÇÃO MAX − VIC
+
+**Arquivo:** `src/processors/devolucao_processor.py`  
+**Comando:** `python main.py devolucao`
+
+### Objetivo
+Identificar registros presentes na base MAX mas **AUSENTES** na base VIC para devolução.
+
+> **Fórmula:** `MAX - VIC` (Anti-Join)
+
+### Fluxo de Processamento
+
+```mermaid
+flowchart TD
+    A[1. Carregar max_tratada] --> B[2. Carregar vic_tratada SEM AGING]
+    B --> C[3. Filtrar MAX por STATUS]
+    C --> D[4. Anti-Join: MAX - VIC]
+    D --> E[5. Carregar CPFs judiciais]
+    E --> F[6. Classificar judicial/extrajudicial]
+    F --> G[7. Formatar layout de saída]
+    G --> H[8. Exportar ZIP]
+```
+
+### 3.1 Configuração
+
+```yaml
+devolucao:
+  campanha_termo: ""           # Filtro de campanha (vazio = todas)
+  status_excluir: []           # Status a excluir
+  
+  chaves:
+    vic: "CHAVE"               # Campo chave do VIC
+    max: "PARCELA"             # Campo chave do MAX
+  
+  filtros_max:
+    status_em_aberto: true     # Filtrar apenas status aberto
+  
+  export:
+    filename_prefix: "vic_devolucao"
+    subdir: "devolucao"
+  
+  status_devolucao_fixo: "98"  # Status fixo para devolução
+```
+
+### 3.2 Operação Anti-Join
+
+```python
+# Retorna registros MAX que NÃO existem em VIC
+def procv_max_menos_vic(df_max, df_vic, col_max="PARCELA", col_vic="CHAVE"):
+    right_keys = set(df_vic[col_vic].astype(str).str.strip().dropna())
+    mask = ~df_max[col_max].astype(str).str.strip().isin(right_keys)
+    return df_max[mask].copy()
+```
+
+### 3.3 Classificação Judicial/Extrajudicial
+
+1. Carrega arquivo `ClientesJudiciais.zip`
+2. Extrai conjunto de CPFs normalizados
+3. Para cada registro da devolução:
+   - Se CPF está na lista judicial → **Judicial**
+   - Se CPF não está na lista → **Extrajudicial**
+
+### 3.4 Layout de Saída
+
+| Coluna | Descrição |
+|--------|-----------|
+| `CNPJ CREDOR` | CNPJ fixo: `12.086.678/0001-18` |
+| `CPFCNPJ CLIENTE` | CPF/CNPJ do cliente |
+| `NOME / RAZAO SOCIAL` | Nome do cliente |
+| `PARCELA` | Chave da parcela |
+| `VENCIMENTO` | Data de vencimento |
+| `VALOR` | Valor da parcela |
+| `TIPO PARCELA` | Tipo da parcela |
+| `DATA DEVOLUCAO` | Data atual |
+| `STATUS` | Valor fixo: `98` |
+
+### 3.5 Arquivos de Saída
+
+```
+vic_devolucao_YYYYMMDD_HHMMSS.zip
+├── vic_devolucao_jud_*.csv       (judicial)
+└── vic_devolucao_extra_*.csv     (extrajudicial)
+```
+
+---
+
+## ⚖️ ETAPA 4: BATIMENTO VIC − MAX
+
+**Arquivo:** `src/processors/batimento_processor.py`  
+**Comando:** `python main.py batimento`
+
+### Objetivo
+Identificar registros presentes na base VIC mas **AUSENTES** na base MAX.
+
+> **Fórmula:** `VIC - MAX` (Anti-Join)
+
+### Fluxo de Processamento
+
+```mermaid
+flowchart TD
+    A[1. Carregar vic_tratada COM AGING] --> B[2. Carregar max_tratada]
+    B --> C[3. Anti-Join: VIC - MAX]
+    C --> D[4. Carregar CPFs judiciais]
+    D --> E[5. Classificar judicial/extrajudicial]
+    E --> F[6. Formatar layout de saída]
+    F --> G[7. Exportar ZIP]
+```
+
+### 4.1 Diferença do Batimento
+
+O batimento usa **VIC COM AGING** (filtrado >90 dias) para:
+- Garantir separação judicial precisa
+- Focar em parcelas realmente em atraso
+
+### 4.2 Configuração
+
+```yaml
+batimento_processor:
+  export:
+    filename_prefix: "vic_batimento"
+```
+
+### 4.3 Arquivos de Saída
+
+```
+vic_batimento_YYYYMMDD_HHMMSS.zip
+├── vic_batimento_jud_*.csv       (judicial)
+└── vic_batimento_extra_*.csv     (extrajudicial)
+```
+
+---
+
+## ⚙️ CONFIGURAÇÕES GLOBAIS
+
+### Arquivo: `config.yaml`
+
+```yaml
+global:
+  date_format: "%d/%m/%Y"
+  encoding: "utf-8-sig"
+  empresa:
+    cnpj: "12.086.678/0001-18"
+
+vic_processor:
+  status_em_aberto: "EM ABERTO"
+  status_baixa: "BAIXADO"
+  tipos_validos: ["PROSOLUTO", "ITBI", "EVOLUCAO DE OBRA"]
+  aging_minimo: 90
+  filtros_inclusao:
+    status_em_aberto: true
+    tipos_validos: true
+    aging: true
+    blacklist: true
+  phone_columns:
+    - "TEL. RESIDENCIAL"
+    - "TEL. COMERCIAL"
+    - "TEL. CELULAR"
+
+max_processor:
+  status_em_aberto: "Aberto"
+  columns:
+    required: ["CPFCNPJ_CLIENTE", "NUMERO_CONTRATO", "PARCELA", "VENCIMENTO", "VALOR"]
+  validation:
+    chave_regex: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+$"
+    remover_parcela_duplicada: true
+```
+
+### Variáveis de Ambiente (`.env`)
+
+```properties
+# Email (IMAP)
+EMAIL=seu_email@gmail.com
+EMAIL_PASSWORD=senha_app
+IMAP_SERVER=imap.gmail.com
+
+# SQL Server
+SQL_SERVER_HOST=servidor
+SQL_SERVER_DATABASE=banco
+SQL_SERVER_USER=usuario
+SQL_SERVER_PASSWORD=senha
+```
+
+---
+
+## 🚀 COMANDOS DE EXECUÇÃO
+
+### Execução Individual
+
+```bash
+# Extração de dados
+python main.py extract vic           # Extrai base VIC (email)
+python main.py extract max           # Extrai base MAX (SQL)
+python main.py extract judicial      # Extrai clientes judiciais
+
+# Tratamento de dados
+python main.py treat vic             # Trata base VIC
+python main.py treat max             # Trata base MAX
+python main.py treat all             # Trata ambas as bases
+
+# Processamentos
+python main.py devolucao             # Executa devolução
+python main.py batimento             # Executa batimento
+python main.py enriquecimento        # Executa enriquecimento
+```
+
+### Execução Completa via Scripts .bat
+
+**`run_completo2.0.bat` ⭐ RECOMENDADO:**
+```
+1. Verifica Python instalado
+2. Prepara ambiente virtual (venv)
+3. Instala dependências
+4. Extrai VIC, MAX, Judicial
+5. Trata VIC SEM AGING → Devolução
+6. Trata VIC COM AGING → Batimento
+7. Grava logs em data/logs/execucao_completa_v2.log
+```
+
+**`run_pipeline.bat`:**
+Menu interativo com opções:
+1. Pipeline Padrão (v1.0)
+2. Pipeline Híbrido (v2.0) ⭐
+3. Pipeline Sem Aging
+4. Processadores individuais
+5. Extração automática
+
+---
+
+## 📊 COMPARAÇÃO: FLUXO v1.0 vs v2.0
+
+| Aspecto | v1.0 | v2.0 (Híbrido) | Melhoria |
+|---------|------|----------------|----------|
+| **Registros Devolução** | 163k | 470k | +188% |
+| **Precisão Batimento** | ✅ | ✅ | Mantida |
+| **Separação Judicial** | ✅ | ✅ | Mantida |
+| **Estratégia** | Única base VIC | VIC SEM/COM aging | Otimizada |
+
+---
+
+## 📊 RESUMO DAS BASES CRUZADAS
+
+| Etapa | Base Principal | Base de Cruzamento | Operação | Resultado |
+|-------|----------------|-------------------|----------|-----------|
+| **Devolução** | MAX tratada | VIC tratada SEM AGING | MAX − VIC | Títulos para devolução |
+| **Batimento** | VIC tratada COM AGING | MAX tratada | VIC − MAX | Títulos ausentes em MAX |
+
+---
+
+## 📂 MÉTRICAS TÍPICAS
+
+### Volumes de Processamento (v2.0)
+
+| Etapa | Entrada | Saída | Taxa |
+|-------|---------|-------|------|
+| **VIC SEM AGING** | 921,560 | 470,709 | 51.1% |
+| **VIC COM AGING** | 921,560 | 163,122 | 17.7% |
+| **MAX Tratado** | 195,459 | 190,884 | 97.7% |
+| **Devolução** | - | 1,979 | 1.63% |
+| **Batimento** | - | 4,030 | 2.47% |
+
+### Performance
+
+- ⏱️ **Tempo médio:** 3-5 minutos (com extração)
+- 💾 **Uso de memória:** ~2GB
+- 📁 **Espaço em disco:** ~500MB por execução
+
+---
+
+## ✅ CHECKLIST DE REPLICAÇÃO
+
+- [ ] Configurar variáveis de ambiente (`.env`)
+- [ ] Configurar `config.yaml` conforme necessário
+- [ ] Executar diagnóstico: `diagnosticar_ambiente.bat`
+- [ ] Executar setup: `setup_project.bat`
+- [ ] Executar extrações: VIC → MAX → Judicial
+- [ ] Verificar arquivos em `data/input/`
+- [ ] Executar `run_completo2.0.bat` (recomendado)
+- [ ] Verificar `data/output/devolucao/` e `data/output/batimento/`
+- [ ] Conferir logs em `data/logs/`
+
+---
+
+*Documentação gerada em: 25/12/2025*  
+*Projeto: VIC/MAX - Sistema de Processamento de Dados Financeiros v2.0*

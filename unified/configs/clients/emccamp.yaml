@@ -1,0 +1,268 @@
+# EMCCAMP Client Configuration
+# Unified Pipeline System - Based on real data structure
+
+name: emccamp
+version: "1.0"
+description: "EMCCAMP Processing Pipeline - Carteira EMCCAMP"
+
+# Data source: Client data (EMCCAMP from ZIP file)
+client_source:
+  loader:
+    type: file
+    params:
+      path: "data/input/emccamp/Emccamp.zip"
+      encoding: "utf-8-sig"
+      separator: ";"
+
+  # Key generation (composite: NUM_VENDA-ID_PARCELA)
+  key:
+    type: composite
+    components:
+      - NUM_VENDA
+      - ID_PARCELA
+    separator: "-"
+    output_column: CHAVE
+
+  # Column mappings from source to standard names
+  columns:
+    CLIENTE: NOME_RAZAO_SOCIAL
+    CPF: CPFCNPJ_CLIENTE
+    NUM_VENDA: CONTRATO
+    ID_PARCELA: PARCELA
+    VENCIMENTO: VENCIMENTO
+    VALOR_ATUALIZADO: VALOR
+    NOME_EMPREENDIMENTO: EMPREENDIMENTO
+    DSC_SIT_VENDA: STATUS_TITULO
+    TIPO_PAGTO: TIPO_PAGTO
+    VALOR_ORIGINAL: VALOR_ORIGINAL
+    CNPJ_EMPREENDIMENTO: CNPJ_EMPREENDIMENTO
+    TELEFONE: TELEFONE
+    EMAIL: EMAIL
+    RUA: RUA
+    NUMERO: NUMERO
+    COMPLEMENTO: COMPLEMENTO
+    CEP: CEP
+    BAIRRO: BAIRRO
+    CIDADE: CIDADE
+    UF: UF
+
+  required_columns:
+    - CPFCNPJ_CLIENTE
+    - CONTRATO
+    - PARCELA
+    - VENCIMENTO
+    - VALOR
+
+  validators:
+    - type: required
+      enabled: true
+      params:
+        columns:
+          - CPFCNPJ_CLIENTE
+          - CONTRATO
+          - PARCELA
+          - VENCIMENTO
+          - VALOR
+
+    - type: type_filter
+      enabled: true
+      params:
+        column: TIPO_PAGTO
+        exclude:
+          - PERMUTA
+          - Financiamento Fixo
+        case_sensitive: false
+        match_mode: exact
+
+  splitters: []
+
+  export:
+    filename_prefix: emccamp_tratada
+    format: zip
+    encoding: utf-8-sig
+    separator: ";"
+
+# Data source: MAX data (from ZIP file)
+max_source:
+  loader:
+    type: file
+    params:
+      path: "data/input/base_max/MaxSmart.zip"
+      encoding: "utf-8-sig"
+      separator: ";"
+
+  # MAX uses PARCELA as CHAVE directly
+  key:
+    type: column
+    column: PARCELA
+    output_column: CHAVE
+
+  # Column mappings
+  columns:
+    CPFCNPJ_CLIENTE: CPF_CNPJ
+    VENCIMENTO: DATA_VENCIMENTO
+
+  required_columns:
+    - NUMERO_CONTRATO
+    - PARCELA
+    - VENCIMENTO
+    - VALOR
+    - CPFCNPJ_CLIENTE
+
+  validators:
+    - type: regex
+      enabled: true
+      params:
+        column: PARCELA
+        pattern: "^[0-9]{3,}-[0-9]{2,}$"
+        mode: fullmatch
+
+  splitters: []
+
+# Pipeline configuration
+pipeline:
+  processors:
+    - type: tratamento
+      enabled: true
+      params:
+        column_mappings:
+          CLIENTE: NOME_RAZAO_SOCIAL
+          CPF: CPFCNPJ_CLIENTE
+          NUM_VENDA: CONTRATO
+          ID_PARCELA: PARCELA
+          VALOR_ATUALIZADO: VALOR
+          NOME_EMPREENDIMENTO: EMPREENDIMENTO
+          DSC_SIT_VENDA: STATUS_TITULO
+        cpf_columns:
+          - CPFCNPJ_CLIENTE
+          - CPF
+        phone_columns:
+          - TELEFONE
+        value_columns:
+          - VALOR
+          - VALOR_ORIGINAL
+          - VALOR_ATUALIZADO
+        date_columns:
+          - VENCIMENTO
+          - DATA_VENCIMENTO
+        text_columns:
+          - NOME_RAZAO_SOCIAL
+          - CLIENTE
+          - EMPREENDIMENTO
+        remove_duplicates: true
+        key_column: CHAVE
+
+    - type: batimento
+      enabled: true
+      params:
+        client_key: CHAVE
+        max_key: CHAVE
+        compute_a_minus_b: true   # novos (EMCCAMP not in MAX)
+        compute_b_minus_a: true   # baixas (MAX not in EMCCAMP)
+        compute_intersection: false
+        export_format: zip
+        encoding: utf-8-sig
+        separator: ";"
+        # Filter out specific payment types
+        filter_types:
+          column: TIPO_PAGTO
+          exclude:
+            - PERMUTA
+            - Financiamento Fixo
+
+    - type: baixa
+      enabled: true
+      params:
+        client_key: CHAVE
+        max_key: CHAVE
+        status_baixa_fixo: "98"
+        export_format: zip
+        add_timestamp: true
+        export_columns:
+          - CPFCNPJ_CLIENTE
+          - NOME_RAZAO_SOCIAL
+          - NUMERO_CONTRATO
+          - PARCELA
+          - CHAVE
+          - VENCIMENTO
+          - VALOR
+          - STATUS_TITULO
+
+    - type: devolucao
+      enabled: true
+      params:
+        client_key: CHAVE
+        max_key: CHAVE
+        campanha_termo: "EMCCAMP"
+        judicial_source: "data/input/judicial/ClientesJudiciais.zip"
+        judicial_column: CPF_CNPJ
+        target_column: CPFCNPJ_CLIENTE
+        status_devolucao_fixo: "98"
+        export_format: zip
+        add_timestamp: true
+        add_motivo: true
+        add_data: true
+
+    - type: enriquecimento
+      enabled: true
+      params:
+        filename_prefix: emccamp_batimento
+        export_format: zip
+        add_timestamp: true
+        computed_fields:
+          DATA_CARGA:
+            type: date
+            format: "%d/%m/%Y"
+          CREDOR:
+            type: constant
+            value: "EMCCAMP"
+          CNPJ_CREDOR:
+            type: constant
+            value: "19.403.252/0001-90"
+        max_filters:
+          format_cpf: false
+          cpf_column: CPFCNPJ_CLIENTE
+        # Output layout matching original
+        select_columns:
+          - CAMPANHA
+          - CREDOR
+          - CNPJ_CREDOR
+          - CPFCNPJ_CLIENTE
+          - NOME_RAZAO_SOCIAL
+          - NUMERO_CONTRATO
+          - EMPREENDIMENTO
+          - DATA_CADASTRO
+          - PARCELA
+          - CHAVE
+          - VENCIMENTO
+          - VALOR
+          - STATUS_TITULO
+          - TIPO_PARCELA
+          - TIPO_PAGTO
+
+# Global settings
+global:
+  timezone: "America/Sao_Paulo"
+  log_level: "INFO"
+  date_format: "%Y-%m-%d"
+  encoding: "utf-8-sig"
+  csv_separator: ";"
+  add_timestamp_to_files: true
+  empresa:
+    nome: "EMCCAMP"
+    cnpj: "19.403.252/0001-90"
+
+# Extension class (optional)
+extension_class: null
+
+# Input paths (for reference)
+inputs:
+  clientes_judiciais_path: "data/input/judicial/ClientesJudiciais.zip"
+  baixa_emccamp_path: "data/input/baixas/baixa_emccamp.zip"
+  acordos_abertos_path: "data/input/doublecheck_acordo/acordos_abertos.zip"
+
+# Custom paths
+paths:
+  output_dir: "data/output"
+  temp_dir: "data/temp"
+  logs_dir: "data/logs"
