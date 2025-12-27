@@ -14,7 +14,8 @@ def build_processor() -> BatimentoProcessor:
 
 def test_cruzamento_e_separacao_judicial(tmp_path):
     proc = build_processor()
-    proc.judicial_cpfs = {"111"}
+    # Usar JudicialHelper consolidado para definir CPFs judiciais
+    proc.judicial_helper._judicial_cpfs = {"111"}
 
     df_vic = pd.DataFrame(
         {

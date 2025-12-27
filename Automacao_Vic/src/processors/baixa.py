@@ -21,6 +21,7 @@ from src.core.file_manager import FileManager
 from src.core.packager import ExportacaoService
 from src.utils.filters import VicFilterApplier
 from src.utils import get_logger, log_section, digits_only, formatar_datas_serie
+from src.utils.helpers import JudicialHelper
 
 
 @dataclass(frozen=True)
@@ -107,7 +108,10 @@ class BaixaProcessor:
         )
         self.campanha_override: Optional[str] = self.baixa_cfg.get("campanha")
 
-        self._judicial_cpfs: set[str] = set()
+        # Helper consolidado para CPFs judiciais e divisão de carteiras
+        self.judicial_helper = JudicialHelper(
+            self.config, self.logger, self.file_manager.ler_csv_ou_zip
+        )
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -386,76 +390,11 @@ class BaixaProcessor:
         return out
 
     # ------------------------------------------------------------------
-    def _carregar_cpfs_judiciais(self) -> None:
-        if self._judicial_cpfs:
-            return
-        try:
-            inputs_config = self.config.get("inputs", {})
-            judicial_path_cfg = inputs_config.get("clientes_judiciais_path")
-
-            if judicial_path_cfg:
-                judicial_file = Path(judicial_path_cfg)
-            else:
-                judicial_dir = self.paths_cfg.get("input", {}).get("judicial")
-                if judicial_dir:
-                    judicial_file = Path(judicial_dir) / "ClientesJudiciais.zip"
-                else:
-                    judicial_file = Path("data/input/judicial/ClientesJudiciais.zip")
-
-            if not judicial_file.is_absolute():
-                judicial_file = Path.cwd() / judicial_file
-
-            if not judicial_file.exists():
-                self.logger.warning(
-                    "Arquivo de clientes judiciais não encontrado: %s",
-                    judicial_file,
-                )
-                return
-
-            df_judicial = self.file_manager.ler_csv_ou_zip(judicial_file)
-            cpf_columns = [
-                col for col in df_judicial.columns if "CPF" in str(col).upper()
-            ]
-            if not cpf_columns:
-                return
-            cpfs_norm = digits_only(df_judicial[cpf_columns[0]].dropna())
-            cpfs_valid = cpfs_norm[cpfs_norm.str.len().isin({11, 14})]
-            self._judicial_cpfs = set(cpfs_valid.tolist())
-        except Exception as exc:  # pragma: no cover - logging auxiliar
-            self.logger.warning("Falha ao carregar CPFs judiciais: %s", exc)
-            self._judicial_cpfs = set()
-
-    def _mask_judicial(self, df: pd.DataFrame) -> pd.Series:
-        if "IS_JUDICIAL" in df.columns:
-            serie = df["IS_JUDICIAL"].astype(str).str.upper().str.strip()
-            return serie.isin({"1", "SIM", "TRUE", "JUDICIAL"})
-        if "TIPO_FLUXO" in df.columns:
-            serie = df["TIPO_FLUXO"].astype(str).str.upper().str.strip()
-            return serie.eq("JUDICIAL")
-        self._carregar_cpfs_judiciais()
-        if not self._judicial_cpfs:
-            return pd.Series([False] * len(df), index=df.index)
-        serie = digits_only(self._copiar_coluna(
-            df,
-            [
-                "CPF_CNPJ",
-                "CPF/CNPJ",
-                "CPFCNPJ_CLIENTE",
-                "CPF",
-            ],
-        ))
-        return serie.isin(self._judicial_cpfs)
-
     def _dividir_carteiras(
         self, df: pd.DataFrame
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        if df.empty:
-            vazio = df.iloc[0:0].copy()
-            return vazio, vazio
-        mask_jud = self._mask_judicial(df)
-        df_jud = df[mask_jud].copy()
-        df_ext = df[~mask_jud].copy()
-        return df_jud, df_ext
+        """Divide DataFrame em carteiras judicial e extrajudicial usando JudicialHelper."""
+        return self.judicial_helper.dividir_carteiras(df)
 
     # ------------------------------------------------------------------
     def _exportar(
