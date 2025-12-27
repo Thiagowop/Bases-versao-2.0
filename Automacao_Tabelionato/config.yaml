@@ -1,0 +1,109 @@
+# Configurações centralizadas do projeto Tabelionato
+# Arquivo único de configuração - não duplicar
+
+# Parâmetros globais
+global:
+  date_format: "%d/%m/%Y"
+  encoding: "utf-8-sig"
+  csv_separator: ";"
+  decimal_separator: ","
+
+# Configurações para extração de email
+email:
+  imap_server: imap.gmail.com
+  imap_folder: INBOX
+  email_sender: adriano@4protestobh.com
+  email_subject_keyword: "Base de Dados"
+  attachment_keyword: "Cobrança"
+  attachment_extensions: ['.zip', '.rar']
+  password_arquivo: "Mf4tab@"
+  dias_busca: 7
+
+# Configurações para extração MAX Tabelionato
+max:
+  profile: tabelionato
+  output_dir: data/input/max
+  output_filename: MaxSmart_Tabelionato.zip
+
+# Caminhos base
+paths:
+  projeto_root: .
+  logs: data/logs
+  input:
+    max: data/input/max
+    tabelionato: data/input/tabelionato
+    tabelionato_custas: data/input/tabelionato custas
+  output:
+    base: data/output
+    tabelionato_tratada: data/output/tabelionato_tratada
+    max_tratada: data/output/max_tratada
+    batimento: data/output/batimento
+    enriquecimento: data/output/enriquecimento
+    inconsistencias: data/output/inconsistencias
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  console_handler:
+    enabled: false
+  file_handler:
+    enabled: true
+    filename: pipeline.log
+
+# Configurações para processador Tabelionato
+tabelionato_processor:
+  status_em_aberto: "Aberto"
+  columns:
+    chave: "Protocolo"
+    documento: "CpfCnpj"
+    vencimento: "DtAnuencia"
+    valor: "Custas"
+    devedor: "Devedor"
+    campanha: "Campanha"
+  validation:
+    remover_duplicados: true
+  export:
+    filename_prefix: tabelionato_tratado
+    inconsistencies_prefix: tabelionato_inconsistencias
+
+# Configurações para processador MAX
+max_processor:
+  status_em_aberto: "Aberto"
+  columns:
+    required: ["CPFCNPJ_CLIENTE", "NUMERO_CONTRATO", "PARCELA", "VENCIMENTO", "VALOR", "STATUS_TITULO"]
+    chave: "PARCELA"
+  validation:
+    remover_parcela_duplicada: true
+  export:
+    filename_prefix: max_tratada
+    inconsistencies_prefix: max_inconsistencias
+
+# Configurações para batimento
+batimento_processor:
+  # Campanhas configuradas
+  campanhas:
+    campanha_58: "Campanha 58"
+    campanha_78: "Campanha 78"
+    campanha_94: "Campanha 94"
+  # Regras de priorização
+  prioridade_documento:
+    cnpj_formatado: 0  # 18 chars (XX.XXX.XXX/XXXX-XX)
+    cpf_formatado: 1   # 14 chars (XXX.XXX.XXX-XX)
+    outros: 2
+  # Status para identificar títulos em aberto na campanha 78
+  status_aberto: ["aberto", "em aberto", "a", "0"]
+  # CNPJ do credor
+  cnpj_credor: "16.746.133/0001-41"
+  export:
+    filename_prefix: batimento
+    subdir: batimento
+
+# Configurações para processador de baixa
+baixa_processor:
+  chave:
+    tabelionato: "CHAVE"
+    max: "PARCELA"
+  export:
+    filename_prefix: baixa_tabelionato
+    subdir: baixa
