@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from src.utils.anti_join import procv_left_minus_right, procv_max_menos_emccamp
+from src.utils.helpers import procv_left_minus_right, procv_max_menos_emccamp
 
 
 class TestAntiJoin(unittest.TestCase):

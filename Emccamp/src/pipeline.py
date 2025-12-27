@@ -10,10 +10,13 @@ from src.processors import contact_enrichment as enrichment_proc
 from src.processors import devolucao as devolucao_proc
 from src.processors import emccamp as emccamp_proc
 from src.processors import max as max_proc
-from scripts import extrair_basemax, extrair_doublecheck_acordo, extrair_judicial
-from src.utils.totvs_client import baixar_baixas_emccamp, baixar_emccamp
-from src.utils.output_formatter import OutputFormatter, format_extraction_output
-from time import time
+from src.core.extractor import (
+    EmccampExtractor,
+    MaxDBExtractor,
+    JudicialDBExtractor,
+    BaixaExtractor,
+    DoublecheckExtractor,
+)
 
 
 @dataclass(slots=True)
@@ -32,51 +35,28 @@ class Pipeline:
 
     def extract_emccamp(self) -> None:
         config = self._get_config()
-        inicio = time()
-        zip_path, records = baixar_emccamp(config)
-        duracao = time() - inicio
-        
-        format_extraction_output(
-            source="EMCCAMP (API TOTVS)",
-            output_file=str(zip_path),
-            records=records,
-            duration=duracao,
-            steps=[
-                "Conexao com API TOTVS",
-                f"Download de {OutputFormatter.format_count(records)} registros",
-                "Conversao para DataFrame",
-                f"Salvamento em {zip_path.name}"
-            ]
-        )
+        extractor = EmccampExtractor(config, self.loader.base_path)
+        extractor.extrair()
 
     def extract_max(self) -> None:
-        extrair_basemax.main()
+        config = self._get_config()
+        extractor = MaxDBExtractor(config, self.loader.base_path)
+        extractor.extrair()
 
     def extract_judicial(self) -> None:
-        extrair_judicial.main()
+        config = self._get_config()
+        extractor = JudicialDBExtractor(config, self.loader.base_path)
+        extractor.extrair()
 
     def extract_baixa(self) -> None:
         config = self._get_config()
-        inicio = time()
-        zip_path, records = baixar_baixas_emccamp(config)
-        duracao = time() - inicio
-        
-        format_extraction_output(
-            source="BAIXAS EMCCAMP (API TOTVS)",
-            output_file=str(zip_path),
-            records=records,
-            duration=duracao,
-            steps=[
-                "Conexao com API TOTVS",
-                f"Download de dados de baixas",
-                f"Filtro: HONORARIO_BAIXADO != 0",
-                f"Resultado: {OutputFormatter.format_count(records)} registros",
-                f"Salvamento em {zip_path.name}"
-            ]
-        )
+        extractor = BaixaExtractor(config, self.loader.base_path)
+        extractor.extrair()
 
     def extract_doublecheck(self) -> None:
-        extrair_doublecheck_acordo.main()
+        config = self._get_config()
+        extractor = DoublecheckExtractor(config, self.loader.base_path)
+        extractor.extrair()
 
     def extract_all(self) -> None:
         self.extract_emccamp()

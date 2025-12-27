@@ -216,7 +216,7 @@ class DevolucaoProcessor:
 
         # Filtro de campanha (se configurado)
         if self.campanha_termo and "CAMPANHA" in out.columns:
-            from src.utils.text import normalize_ascii_upper
+            from src.utils.helpers import normalize_ascii_upper
             import re
 
             camp = normalize_ascii_upper(out["CAMPANHA"])
@@ -232,7 +232,7 @@ class DevolucaoProcessor:
 
         # Filtro de status a excluir
         if self.status_excluir and "STATUS_TITULO" in out.columns:
-            from src.utils.text import normalize_ascii_upper
+            from src.utils.helpers import normalize_ascii_upper
             
             st = normalize_ascii_upper(out["STATUS_TITULO"])
             mask = st.isin(self.status_excluir)
