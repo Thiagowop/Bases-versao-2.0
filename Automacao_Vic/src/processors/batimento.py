@@ -19,7 +19,7 @@ from src.core.file_manager import FileManager
 from src.utils.validator import InconsistenciaManager
 from src.core.packager import ExportacaoService
 from src.utils.logger import get_logger, log_section
-from src.utils.helpers import procv_vic_menos_max, digits_only
+from src.utils.helpers import procv_vic_menos_max, digits_only, JudicialHelper
 from src.processors.vic import VicFilterApplier
 
 
@@ -55,8 +55,10 @@ class BatimentoProcessor:
         # Timestamp
         self.add_timestamp = self.global_config.get('add_timestamp', True)
 
-        # CPFs judiciais
-        self.judicial_cpfs: Set[str] = set()
+        # Helper consolidado para CPFs judiciais e divisão de carteiras
+        self.judicial_helper = JudicialHelper(
+            self.config, self.logger, self.file_manager.ler_csv_ou_zip
+        )
 
         self.logger.info("BatimentoProcessor inicializado com novos utilitários da Fase 1")
 
@@ -66,52 +68,6 @@ class BatimentoProcessor:
         if caminho.suffix.lower() == '.zip':
             return self.file_manager.ler_csv_ou_zip(caminho)
         return self.file_manager.ler_csv(caminho)
-
-    def carregar_cpfs_judiciais(self) -> None:
-        """Carrega CPFs dos clientes judiciais a partir de CSV/ZIP."""
-        try:
-            inputs_config = self.config.get('inputs', {})
-            judicial_path_cfg = inputs_config.get('clientes_judiciais_path')
-
-            if judicial_path_cfg:
-                judicial_file = Path(judicial_path_cfg)
-            else:
-                judicial_dir = self.paths_config.get('input', {}).get('judicial')
-                if judicial_dir:
-                    judicial_file = Path(judicial_dir) / "ClientesJudiciais.zip"
-                else:
-                    judicial_file = Path("data/input/judicial/ClientesJudiciais.zip")
-
-            if not judicial_file.is_absolute():
-                # Usar caminho absoluto correto sem duplicação
-                base_path = Path.cwd()
-                judicial_file = base_path / judicial_file
-            if not judicial_file.exists():
-                self.logger.warning(
-                    f"Arquivo de clientes judiciais não encontrado: {judicial_file}"
-                )
-                self.logger.warning(
-                    "Todos os registros serão classificados como EXTRAJUDICIAL"
-                )
-                return
-            self.logger.info(f"Carregando clientes judiciais: {judicial_file}")
-            df_judicial = self.file_manager.ler_csv_ou_zip(judicial_file)
-            cpf_columns = [col for col in df_judicial.columns if 'CPF' in col.upper()]
-            if not cpf_columns:
-                self.logger.warning(
-                    "Nenhuma coluna de CPF encontrada no arquivo judicial"
-                )
-                return
-            cpfs_raw = df_judicial[cpf_columns[0]].dropna()
-            cpfs_normalized = digits_only(cpfs_raw)
-            cpfs_valid = cpfs_normalized[cpfs_normalized.str.len() == 11]
-            self.judicial_cpfs = set(cpfs_valid.tolist())
-            self.logger.info(
-                f"CPFs judiciais carregados: {len(self.judicial_cpfs):,}"
-            )
-        except Exception as e:
-            self.logger.error(f"Erro ao carregar CPFs judiciais: {e}")
-            self.judicial_cpfs = set()
 
     def realizar_cruzamento(self, df_vic: pd.DataFrame, df_max: pd.DataFrame) -> pd.DataFrame:
         """Identifica parcelas em aberto na VIC que não estão na MAX (left anti-join)."""
@@ -265,9 +221,10 @@ class BatimentoProcessor:
             return (str(zip_path) if zip_path else ""), 0, 0
 
         self.logger.info("Separando registros em judicial e extrajudicial...")
+        # Usar JudicialHelper consolidado para divisão de carteiras
         df_b = df_batimento.copy()
         df_b["CPF_NORMALIZADO"] = digits_only(df_b["CPFCNPJ CLIENTE"])
-        mask_judicial = df_b["CPF_NORMALIZADO"].isin(self.judicial_cpfs)
+        mask_judicial = df_b["CPF_NORMALIZADO"].isin(self.judicial_helper.judicial_cpfs)
         df_judicial = df_batimento[mask_judicial].copy()
         df_extrajudicial = df_batimento[~mask_judicial].copy()
 
@@ -307,10 +264,7 @@ class BatimentoProcessor:
         try:
             self.logger.info("Iniciando pipeline de batimento...")
 
-            # Carregar CPFs judiciais
-            self.carregar_cpfs_judiciais()
-
-            # Carregar dados
+            # Carregar dados (CPFs judiciais são carregados automaticamente via JudicialHelper)
             self.logger.info(f"Carregando dados VIC: {vic_path}")
             df_vic_raw = self.carregar_arquivo(vic_path)
             self.logger.info(f"VIC carregado: {len(df_vic_raw):,} registros")

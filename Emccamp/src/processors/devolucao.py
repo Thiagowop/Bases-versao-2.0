@@ -15,7 +15,7 @@ import pandas as pd
 
 from src.config.loader import ConfigLoader, LoadedConfig
 from src.utils import digits_only, procv_max_menos_emccamp
-from src.utils.helpers import extrair_data_referencia, primeiro_valor
+from src.utils.helpers import extrair_data_referencia, primeiro_valor, JudicialHelper
 from src.utils.io import DatasetIO
 from src.utils.logger import get_logger
 from src.utils.output_formatter import OutputFormatter
@@ -101,7 +101,12 @@ class DevolucaoProcessor:
         self.status_devolucao_fixo = self.devolucao_config.get("status_devolucao_fixo", "98")
         self.remover_por_baixa = bool(self.devolucao_config.get("remover_por_baixa", True))
 
-        self._judicial_cpfs: set[str] = set()
+        # Inicializa JudicialHelper consolidado
+        self.judicial_helper = JudicialHelper(
+            config=config.data,
+            logger=self.logger,
+            file_reader=self.io.read,
+        )
 
     def process(self) -> DevolucaoStats:
         """Executa a pipeline completa de devolução."""
@@ -125,9 +130,8 @@ class DevolucaoProcessor:
         # Remover por baixa (se configurado)
         df_devolucao_sem_baixa, removidos_baixa = self._remover_registros_baixa(df_devolucao_raw)
 
-        # Dividir carteiras
-        self._carregar_cpfs_judiciais()
-        df_judicial_raw, df_extrajudicial_raw = self._dividir_carteiras(df_devolucao_sem_baixa)
+        # Dividir carteiras usando JudicialHelper consolidado
+        df_judicial_raw, df_extrajudicial_raw = self.judicial_helper.dividir_carteiras(df_devolucao_sem_baixa)
 
         # Formatar layout
         df_geral_layout = self._formatar_devolucao(df_devolucao_sem_baixa)
@@ -349,70 +353,6 @@ class DevolucaoProcessor:
         removidos = int((~mask).sum())
 
         return df.loc[mask].copy(), removidos
-
-    def _carregar_cpfs_judiciais(self) -> None:
-        """Carrega CPFs/CNPJs de clientes judiciais."""
-        if self._judicial_cpfs:
-            return
-
-        judicial_file = self.judicial_dir / "ClientesJudiciais.zip"
-
-        if not judicial_file.exists():
-            self.logger.info(
-                "Arquivo de clientes judiciais não encontrado: %s. Todos serão extrajudiciais.",
-                judicial_file,
-            )
-            self._judicial_cpfs = set()
-            return
-
-        try:
-            df_judicial = self.io.read(judicial_file)
-        except Exception as exc:
-            self.logger.warning("Falha ao carregar clientes judiciais: %s", exc)
-            self._judicial_cpfs = set()
-            return
-
-        # Procurar coluna de CPF/CNPJ
-        cpf_columns = [
-            col for col in df_judicial.columns
-            if "CPF" in str(col).upper() or "CNPJ" in str(col).upper()
-        ]
-        if not cpf_columns:
-            self._judicial_cpfs = set()
-            return
-
-        cpfs_norm = digits_only(df_judicial[cpf_columns[0]].dropna())
-        cpfs_valid = cpfs_norm[cpfs_norm.str.len().isin({11, 14})]
-        self._judicial_cpfs = set(cpfs_valid.tolist())
-
-    def _dividir_carteiras(
-        self,
-        df: pd.DataFrame
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Divide DataFrame em judicial e extrajudicial."""
-        if df.empty:
-            vazio = df.iloc[0:0].copy()
-            return vazio, vazio
-
-        # Identificar coluna de CPF/CNPJ
-        cpf_col = None
-        for candidato in ("CPF_CNPJ", "CPFCNPJ_CLIENTE", "CPFCNPJ CLIENTE"):
-            if candidato in df.columns:
-                cpf_col = candidato
-                break
-
-        if not cpf_col:
-            # Sem coluna de CPF, todos extrajudiciais
-            return df.iloc[0:0].copy(), df.copy()
-
-        # Normalizar CPF/CNPJ e verificar se está na lista judicial
-        serie = digits_only(df[cpf_col].fillna(""))
-        mask_judicial = serie.isin(self._judicial_cpfs)
-
-        df_judicial = df[mask_judicial].copy()
-        df_extrajudicial = df[~mask_judicial].copy()
-
-        return df_judicial, df_extrajudicial
 
     def _formatar_devolucao(self, df: pd.DataFrame) -> pd.DataFrame:
         """Formata o DataFrame de devolução para o layout final."""

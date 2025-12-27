@@ -11,6 +11,7 @@ import pandas as pd
 
 from src.config.loader import ConfigLoader, LoadedConfig
 from src.utils import digits_only, procv_emccamp_menos_max
+from src.utils.helpers import JudicialHelper
 from src.utils.io import DatasetIO
 from src.utils.logger import get_logger
 from src.utils.output_formatter import format_batimento_output
@@ -71,7 +72,12 @@ class BatimentoProcessor:
             raise ValueError("CNPJ do credor nao configurado (global.empresa.cnpj)")
         self.io = DatasetIO(separator=self.separator, encoding=self.encoding)
 
-        self.judicial_cpfs: set[str] = set()
+        # Inicializa JudicialHelper consolidado
+        self.judicial_helper = JudicialHelper(
+            config=config.data,
+            logger=self.logger,
+            file_reader=self.io.read,
+        )
 
         flags_cfg = config.get("flags", {})
         filtros_cfg = flags_cfg.get("filtros_batimento", {})
@@ -109,8 +115,7 @@ class BatimentoProcessor:
         )
 
         df_formatado = self._format_layout(df_batimento)
-        self._load_judicial_cpfs()
-        df_judicial, df_extrajudicial = self._split_portfolios(df_formatado)
+        df_judicial, df_extrajudicial = self.judicial_helper.dividir_carteiras(df_formatado)
 
         arquivo_saida = self._export(df_judicial, df_extrajudicial)
 
@@ -186,42 +191,6 @@ class BatimentoProcessor:
         formatted["TIPO PARCELA"] = _column("TIPO_PAGTO").str.upper()
         formatted["CNPJ CREDOR"] = self.cnpj_credor
         return formatted[LAYOUT_COLS]
-
-    def _load_judicial_cpfs(self) -> None:
-        zip_path = self.judicial_dir / "ClientesJudiciais.zip"
-        if not zip_path.exists():
-            self.logger.info("ClientesJudiciais.zip nao encontrado; todos serao extrajudiciais")
-            return
-
-        import zipfile
-
-        with zipfile.ZipFile(zip_path) as archive:
-            names = [name for name in archive.namelist() if name.lower().endswith(".csv")]
-            if not names:
-                self.logger.warning("Arquivo judicial sem CSV; ignorando")
-                return
-            with archive.open(names[0]) as buffer:
-                df = pd.read_csv(buffer, sep=self.separator, encoding=self.encoding, dtype=str)
-
-        column_name: Optional[str] = None
-        if "CPF_CNPJ" in df.columns:
-            column_name = "CPF_CNPJ"
-        elif "CPF" in df.columns:
-            column_name = "CPF"
-
-        if not column_name:
-            self.logger.warning("Coluna CPF ou CPF_CNPJ ausente no arquivo judicial; ignorando")
-            return
-
-        self.judicial_cpfs = set(digits_only(df[column_name].dropna().astype(str)).tolist())
-
-    def _split_portfolios(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        if df.empty:
-            return df, df
-
-        normalizado = digits_only(df["CPFCNPJ CLIENTE"].fillna(""))
-        mask_judicial = normalizado.isin(self.judicial_cpfs)
-        return df[mask_judicial].copy(), df[~mask_judicial].copy()
 
     def _export(self, df_judicial: pd.DataFrame, df_extrajudicial: pd.DataFrame) -> Path | None:
         if df_judicial.empty and df_extrajudicial.empty:

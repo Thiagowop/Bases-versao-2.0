@@ -154,4 +154,163 @@ __all__ = [
     "primeiro_valor",
     "normalizar_data_string",
     "extrair_data_referencia",
+    # Classe JudicialHelper
+    "JudicialHelper",
 ]
+
+
+# =============================================================================
+# CLASSE JUDICIAL HELPER (consolidada de batimento e devolucao)
+# =============================================================================
+
+from logging import Logger
+from pathlib import Path
+from typing import Callable, Dict, Set, Tuple
+import zipfile
+
+
+class JudicialHelper:
+    """Classe utilitária para gerenciar CPFs judiciais e divisão de carteiras.
+
+    Consolida a lógica duplicada que existia em:
+    - batimento.py: _load_judicial_cpfs(), _split_portfolios()
+    - devolucao.py: _carregar_cpfs_judiciais(), _dividir_carteiras()
+    """
+
+    # Colunas padrão para buscar CPF no DataFrame
+    CPF_COLUMNS = ("CPFCNPJ_CLIENTE", "CPFCNPJ CLIENTE", "CPF_CNPJ", "CPF/CNPJ", "CPF")
+
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        logger: Logger,
+        file_reader: Optional[Callable[[Path], pd.DataFrame]] = None,
+    ):
+        """Inicializa o JudicialHelper.
+
+        Args:
+            config: Dicionário de configurações do projeto
+            logger: Logger para registro de eventos
+            file_reader: Função para ler arquivos CSV/ZIP
+        """
+        self.config = config
+        self.logger = logger
+        self._file_reader = file_reader
+        self._judicial_cpfs: Optional[Set[str]] = None
+        self._paths_config = config.get("paths", {})
+
+    @property
+    def judicial_cpfs(self) -> Set[str]:
+        """Retorna o conjunto de CPFs judiciais, carregando se necessário."""
+        if self._judicial_cpfs is None:
+            self._carregar_cpfs_judiciais()
+        return self._judicial_cpfs or set()
+
+    def _carregar_cpfs_judiciais(self) -> None:
+        """Carrega CPFs dos clientes judiciais a partir de CSV/ZIP."""
+        if self._judicial_cpfs is not None:
+            return
+
+        # Determinar caminho do arquivo
+        judicial_dir = self._paths_config.get("input", {}).get("judicial")
+        if judicial_dir:
+            judicial_file = Path(judicial_dir) / "ClientesJudiciais.zip"
+        else:
+            judicial_file = Path("data/input/judicial/ClientesJudiciais.zip")
+
+        if not judicial_file.is_absolute():
+            judicial_file = Path.cwd() / judicial_file
+
+        if not judicial_file.exists():
+            self.logger.info(
+                "Arquivo de clientes judiciais não encontrado: %s. "
+                "Todos os registros serão classificados como EXTRAJUDICIAL",
+                judicial_file,
+            )
+            self._judicial_cpfs = set()
+            return
+
+        try:
+            self.logger.info(f"Carregando clientes judiciais: {judicial_file}")
+
+            if self._file_reader:
+                df_judicial = self._file_reader(judicial_file)
+            else:
+                # Fallback: leitura básica
+                if judicial_file.suffix.lower() == ".zip":
+                    with zipfile.ZipFile(judicial_file, "r") as zf:
+                        csv_files = [n for n in zf.namelist() if n.lower().endswith(".csv")]
+                        if csv_files:
+                            with zf.open(csv_files[0]) as fh:
+                                df_judicial = pd.read_csv(fh, dtype=str, sep=";", encoding="utf-8-sig")
+                        else:
+                            self._judicial_cpfs = set()
+                            return
+                else:
+                    df_judicial = pd.read_csv(judicial_file, dtype=str, sep=";", encoding="utf-8-sig")
+
+            # Encontrar coluna de CPF
+            cpf_columns = [
+                col for col in df_judicial.columns
+                if "CPF" in str(col).upper() or "CNPJ" in str(col).upper()
+            ]
+            if not cpf_columns:
+                self.logger.warning("Nenhuma coluna de CPF/CNPJ encontrada no arquivo judicial")
+                self._judicial_cpfs = set()
+                return
+
+            # Normalizar e validar CPFs (11 ou 14 dígitos)
+            cpfs_norm = digits_only(df_judicial[cpf_columns[0]].dropna())
+            cpfs_valid = cpfs_norm[cpfs_norm.str.len().isin({11, 14})]
+            self._judicial_cpfs = set(cpfs_valid.tolist())
+
+            self.logger.info(f"CPFs judiciais carregados: {len(self._judicial_cpfs):,}")
+
+        except Exception as exc:
+            self.logger.warning("Falha ao carregar CPFs judiciais: %s", exc)
+            self._judicial_cpfs = set()
+
+    def mask_judicial(self, df: pd.DataFrame) -> pd.Series:
+        """Retorna máscara booleana indicando quais registros são judiciais.
+
+        Args:
+            df: DataFrame com registros a classificar
+
+        Returns:
+            Series booleana: True = judicial, False = extrajudicial
+        """
+        if not self.judicial_cpfs:
+            return pd.Series([False] * len(df), index=df.index)
+
+        # Buscar coluna de CPF
+        cpf_col = None
+        for col in self.CPF_COLUMNS:
+            if col in df.columns:
+                cpf_col = col
+                break
+
+        if cpf_col is None:
+            return pd.Series([False] * len(df), index=df.index)
+
+        serie = digits_only(df[cpf_col].fillna(""))
+        return serie.isin(self.judicial_cpfs)
+
+    def dividir_carteiras(
+        self, df: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """Divide DataFrame em carteiras judicial e extrajudicial.
+
+        Args:
+            df: DataFrame com registros a dividir
+
+        Returns:
+            Tuple (df_judicial, df_extrajudicial)
+        """
+        if df.empty:
+            return df.copy(), df.copy()
+
+        mask = self.mask_judicial(df)
+        df_judicial = df.loc[mask].copy()
+        df_extrajudicial = df.loc[~mask].copy()
+
+        return df_judicial, df_extrajudicial
