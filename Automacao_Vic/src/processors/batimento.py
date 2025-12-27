@@ -20,7 +20,7 @@ from src.utils.validator import InconsistenciaManager
 from src.core.packager import ExportacaoService
 from src.utils.logger import get_logger, log_section
 from src.utils.helpers import procv_vic_menos_max, digits_only, JudicialHelper
-from src.processors.vic import VicFilterApplier
+from src.utils.filters import VicFilterApplier
 
 
 class BatimentoProcessor:

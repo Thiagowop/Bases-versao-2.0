@@ -88,8 +88,8 @@ class BatimentoProcessor:
     def process(self) -> BatimentoStats:
         inicio = datetime.now()
 
-        emccamp_path = self._resolve_file(self.emccamp_dir, "emccamp_tratada_*.zip")
-        max_path = self._resolve_file(self.max_dir, "max_tratada_*.zip")
+        emccamp_path = self.paths.resolve_file(self.emccamp_dir, "emccamp_tratada_*.zip")
+        max_path = self.paths.resolve_file(self.max_dir, "max_tratada_*.zip")
 
         df_emccamp = self.io.read(emccamp_path)
         df_max = self.io.read(max_path)
@@ -132,15 +132,6 @@ class BatimentoProcessor:
         )
         self._show_summary(stats, emccamp_path.name, max_path.name)
         return stats
-
-    def _resolve_file(self, directory: Path, pattern: str) -> Path:
-        if not directory.exists():
-            raise FileNotFoundError(f"Diretorio nao encontrado: {directory}")
-
-        candidates = sorted(directory.glob(pattern), key=lambda path: path.stat().st_mtime, reverse=True)
-        if not candidates:
-            raise FileNotFoundError(f"Nenhum arquivo correspondente a {pattern} em {directory}")
-        return candidates[0]
 
     def _deduplicate_max(self, df_max: pd.DataFrame) -> pd.DataFrame:
         if "PARCELA" not in df_max.columns:

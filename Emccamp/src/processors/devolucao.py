@@ -114,8 +114,8 @@ class DevolucaoProcessor:
         self.logger.info("Iniciando pipeline de devolução MAX - EMCCAMP...")
 
         # Carregar arquivos
-        emccamp_path = self._resolve_file(self.emccamp_dir, "emccamp_tratada_*.zip")
-        max_path = self._resolve_file(self.max_dir, "max_tratada_*.zip")
+        emccamp_path = self.paths.resolve_file(self.emccamp_dir, "emccamp_tratada_*.zip")
+        max_path = self.paths.resolve_file(self.max_dir, "max_tratada_*.zip")
 
         df_emccamp_raw = self.io.read(emccamp_path)
         df_max_raw = self.io.read(max_path)
@@ -164,21 +164,6 @@ class DevolucaoProcessor:
 
         self._show_summary(stats)
         return stats
-
-    def _resolve_file(self, directory: Path, pattern: str) -> Path:
-        """Resolve o arquivo mais recente que corresponde ao padrão."""
-        if not directory.exists():
-            raise FileNotFoundError(f"Diretório não encontrado: {directory}")
-
-        candidates = sorted(
-            directory.glob(pattern),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True
-        )
-        if not candidates:
-            raise FileNotFoundError(f"Nenhum arquivo correspondente a {pattern} em {directory}")
-        
-        return candidates[0]
 
     def _aplicar_filtros_emccamp(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, int]]:
         """Aplica filtros configurados na base EMCCAMP."""
