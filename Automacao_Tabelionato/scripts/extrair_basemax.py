@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
 
-from src.utils.console import format_duration, format_int, print_section
+from src.utils.helpers import format_duration, format_int, print_section
 from src.utils.logger_config import get_logger
 
 warnings.filterwarnings('ignore', message='pandas only supports SQLAlchemy connectable')
@@ -119,24 +119,32 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    """Funcao principal de extracao."""
+def main(profile: str | None = None) -> None:
+    """Funcao principal de extracao.
+    
+    Args:
+        profile: Nome do perfil de configuração. Se None, usa argumentos da linha de comando.
+    """
 
     _suppress_console_info(logger)
-    args = parse_args()
+    
+    # Se profile não foi passado, usar argumentos da linha de comando
+    if profile is None:
+        args = parse_args()
+        profile = args.profile
 
     inicio = time.time()
 
     try:
-        logger.info("Perfil de configuracao utilizado: %s", args.profile)
-        zip_path, registros = extract_max_tabelionato_data(args.profile)
+        logger.info("Perfil de configuracao utilizado: %s", profile)
+        zip_path, registros = extract_max_tabelionato_data(profile)
         tempo = time.time() - inicio
 
         if zip_path:
             linhas = [
                 "[STEP] Extracao MAX Tabelionato",
                 "",
-                f"Perfil utilizado: {args.profile}",
+                f"Perfil utilizado: {profile}",
                 f"Registros extraidos: {format_int(registros)}",
                 "",
                 f"Arquivo exportado: {zip_path}",
@@ -147,7 +155,7 @@ def main() -> None:
             linhas = [
                 "[ERRO] Falha na extracao dos dados.",
                 "",
-                f"Perfil utilizado: {args.profile}",
+                f"Perfil utilizado: {profile}",
                 f"Duracao: {format_duration(tempo, precision=2)}",
             ]
             print_section("EXTRACAO - MAX", linhas, leading_break=False)

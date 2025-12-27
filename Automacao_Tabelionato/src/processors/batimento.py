@@ -12,8 +12,7 @@ from datetime import datetime
 import pandas as pd
 import zipfile
 
-from src.utils.console import format_duration, format_int, print_section, suppress_console_info
-from src.utils.formatting import formatar_moeda_serie
+from src.utils.helpers import format_duration, format_int, print_section, suppress_console_info, formatar_moeda_serie
 from src.utils.logger_config import (
     get_logger,
     log_metrics,

@@ -30,7 +30,7 @@ load_dotenv(PARENT_BASE / ".env")
 # Imports diretos via pacote src (fail-fast)
 
 from src.utils.archives import ensure_7zip_ready, extract_with_7zip
-from src.utils.console import format_duration, format_int, print_section, suppress_console_info
+from src.utils.helpers import format_duration, format_int, print_section, suppress_console_info
 from src.utils.logger_config import get_logger
 logger = get_logger()
 
