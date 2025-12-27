@@ -10,7 +10,10 @@ import zipfile
 
 import pandas as pd
 
-from src.utils.helpers import format_duration, format_int, format_percent, print_section, suppress_console_info, formatar_moeda_serie
+from src.utils.helpers import (
+    format_duration, format_int, format_percent, print_section, suppress_console_info, formatar_moeda_serie,
+    generate_timestamp, limpar_arquivos_padrao,
+)
 from src.utils.logger_config import get_logger, log_session_end, log_session_start
 
 # Configuracao de separador decimal para exportacao CSV
@@ -21,7 +24,7 @@ class TabelionatoMaxProcessor:
     """Responsvel por carregar, validar e exportar a base MAX."""
 
     def __init__(self) -> None:
-        self.base_dir = Path(__file__).resolve().parent.parent
+        self.base_dir = Path(__file__).resolve().parent.parent.parent
         self.input_dir = self.base_dir / "data" / "input" / "max"
         self.output_dir = self.base_dir / "data" / "output"
         self.output_tratada_dir = self.output_dir / "max_tratada"
@@ -182,8 +185,7 @@ class TabelionatoMaxProcessor:
             return None
 
         self.output_inconsistencias_dir.mkdir(parents=True, exist_ok=True)
-        for arquivo in self.output_inconsistencias_dir.glob("max_inconsistencias*.zip"):
-            arquivo.unlink(missing_ok=True)
+        limpar_arquivos_padrao(self.output_inconsistencias_dir, "max_inconsistencias*.zip", self.logger)
 
         csv_temp = self.output_inconsistencias_dir / "max_inconsistencias.csv"
         df_export = df_invalido.copy()
@@ -201,8 +203,7 @@ class TabelionatoMaxProcessor:
 
     def exportar_resultado(self, df: pd.DataFrame, nome_base: str = "max_tratada") -> Path:
         self.output_tratada_dir.mkdir(parents=True, exist_ok=True)
-        for arquivo in self.output_tratada_dir.glob(f"{nome_base}*.zip"):
-            arquivo.unlink(missing_ok=True)
+        limpar_arquivos_padrao(self.output_tratada_dir, f"{nome_base}*.zip", self.logger)
 
         csv_path = self.output_tratada_dir / f"{nome_base}.csv"
         df_export = df.copy()

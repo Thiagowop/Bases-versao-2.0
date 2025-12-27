@@ -1,278 +1,256 @@
 @echo off
-chcp 65001 >nul
-setlocal enabledelayedexpansion
+chcp 65001 >nul 2>&1
+setlocal EnableDelayedExpansion
 
-set "SCRIPT_DIR=%~dp0"
-cd /d "%SCRIPT_DIR%"
+set "ROOT=%~dp0"
+cd /d "%ROOT%"
 
-set "VENV_DIR=%SCRIPT_DIR%\.venv"
-set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
-set "VENV_ACTIVATE=%VENV_DIR%\Scripts\activate.bat"
-set "VENV_DEACTIVATE=%VENV_DIR%\Scripts\deactivate.bat"
-set "VENV_PIP=%VENV_DIR%\Scripts\pip.exe"
-set "REQUIREMENTS=%SCRIPT_DIR%requirements.txt"
+:: ============================================
+:: VERIFICAR E CRIAR AMBIENTE VIRTUAL
+:: ============================================
+if not exist "venv\Scripts\python.exe" (
+    echo ===============================================
+    echo    CONFIGURACAO INICIAL - TABELIONATO
+    echo ===============================================
+    echo.
 
-set "choice=%~1"
-set "SCRIPT_MODE=INTERACTIVE"
-if not "%choice%"=="" set "SCRIPT_MODE=NOPAUSE"
-if "%choice%"=="" goto MENU
-goto PROCESS_CHOICE
-
-:MENU
-cls
-echo ===============================================
-echo    PIPELINE TABELIONATO - MENU PRINCIPAL
-echo ===============================================
-echo.
-echo 1. Instalar dependencias
-echo 2. Executar fluxo completo (extracao ^> tratamento ^> batimento ^> baixa)
-echo 3. Extrair base MAX do banco
-echo 4. Extrair base a partir do e-mail
-echo 5. Processar apenas MAX (tratamento)
-echo 6. Processar apenas Tabelionato (tratamento)
-echo 7. Processar apenas Batimento
-echo 8. Processar apenas Baixa
-echo 9. Limpar arquivos de saida
-echo 0. Sair
-echo.
-set /p choice=Digite sua escolha (0-9):
-
-:PROCESS_CHOICE
-set "EXIT_CODE=0"
-set "HANDLED="
-
-if "%choice%"=="1" (
-    call :SETUP_ENVIRONMENT %SCRIPT_MODE%
-    set "EXIT_CODE=%ERRORLEVEL%"
-    set "HANDLED=1"
-    goto ACTION_DONE
-)
-
-if "%choice%"=="2" (
-    call :REQUIRE_ENV
+    python --version >nul 2>&1
     if errorlevel 1 (
-        set "EXIT_CODE=%ERRORLEVEL%"
-    ) else (
-        call "%SCRIPT_DIR%fluxo_completo.bat"
-        set "EXIT_CODE=%ERRORLEVEL%"
-    )
-    set "HANDLED=1"
-    goto ACTION_DONE
-)
-
-if "%choice%"=="3" (
-    call :REQUIRE_ENV
-    if errorlevel 1 (
-        set "EXIT_CODE=%ERRORLEVEL%"
-    ) else (
-        call "%VENV_PYTHON%" extracao_base_max_tabelionato.py
-        set "EXIT_CODE=%ERRORLEVEL%"
-        if not "%EXIT_CODE%"=="0" (
-            echo ERRO: Falha na extracao MAX.
-        ) else (
-            echo Extracao MAX concluida com sucesso!
-        )
-    )
-    set "HANDLED=1"
-    goto ACTION_DONE
-)
-
-if "%choice%"=="4" (
-    call :REQUIRE_ENV
-    if errorlevel 1 (
-        set "EXIT_CODE=%ERRORLEVEL%"
-    ) else (
-        call "%VENV_PYTHON%" extrair_base_tabelionato.py
-        set "EXIT_CODE=%ERRORLEVEL%"
-        if not "%EXIT_CODE%"=="0" (
-            echo ERRO: Falha na extracao da base de e-mail.
-        ) else (
-            echo Extracao da base de e-mail concluida com sucesso!
-        )
-    )
-    set "HANDLED=1"
-    goto ACTION_DONE
-)
-
-if "%choice%"=="5" (
-    call :REQUIRE_ENV
-    if errorlevel 1 (
-        set "EXIT_CODE=%ERRORLEVEL%"
-    ) else (
-        call "%VENV_PYTHON%" tratamento_max.py
-        set "EXIT_CODE=%ERRORLEVEL%"
-        if not "%EXIT_CODE%"=="0" (
-            echo ERRO: Falha no tratamento MAX.
-        ) else (
-            echo Tratamento MAX concluido com sucesso!
-        )
-    )
-    set "HANDLED=1"
-    goto ACTION_DONE
-)
-
-if "%choice%"=="6" (
-    call :REQUIRE_ENV
-    if errorlevel 1 (
-        set "EXIT_CODE=%ERRORLEVEL%"
-    ) else (
-        call "%VENV_PYTHON%" tratamento_tabelionato.py
-        set "EXIT_CODE=%ERRORLEVEL%"
-        if not "%EXIT_CODE%"=="0" (
-            echo ERRO: Falha no tratamento Tabelionato.
-        ) else (
-            echo Tratamento Tabelionato concluido com sucesso!
-        )
-    )
-    set "HANDLED=1"
-    goto ACTION_DONE
-)
-
-if "%choice%"=="7" (
-    call :REQUIRE_ENV
-    if errorlevel 1 (
-        set "EXIT_CODE=%ERRORLEVEL%"
-    ) else (
-        call "%VENV_PYTHON%" batimento_tabelionato.py
-        set "EXIT_CODE=%ERRORLEVEL%"
-        if not "%EXIT_CODE%"=="0" (
-            echo ERRO: Falha no batimento.
-        ) else (
-            echo Batimento concluido com sucesso!
-        )
-    )
-    set "HANDLED=1"
-    goto ACTION_DONE
-)
-
-if "%choice%"=="8" (
-    call :REQUIRE_ENV
-    if errorlevel 1 (
-        set "EXIT_CODE=%ERRORLEVEL%"
-    ) else (
-        call "%VENV_PYTHON%" baixa_tabelionato.py
-        set "EXIT_CODE=%ERRORLEVEL%"
-        if not "%EXIT_CODE%"=="0" (
-            echo ERRO: Falha na baixa.
-        ) else (
-            echo Baixa concluida com sucesso!
-        )
-    )
-    set "HANDLED=1"
-    goto ACTION_DONE
-)
-
-if "%choice%"=="9" (
-    call :CLEAN_OUTPUT
-    set "HANDLED=1"
-    goto ACTION_DONE
-)
-
-if "%choice%"=="0" (
-    set "EXIT_CODE=0"
-    goto FINISH
-)
-
-goto INVALID_OPTION
-
-:ACTION_DONE
-if "%HANDLED%"=="1" (
-    if "%SCRIPT_MODE%"=="INTERACTIVE" (
-        echo.
+        echo ERRO: Python nao encontrado no PATH.
+        echo Instale Python 3.9+ e adicione ao PATH.
         pause
-        set "choice="
-        goto MENU
+        exit /b 1
     )
-    goto FINISH
+
+    echo [1/3] Detectando Python...
+    for /f "tokens=2 delims= " %%v in ('python --version 2^>^&1') do set PYVER=%%v
+    echo       Python !PYVER! encontrado.
+    echo.
+
+    echo [2/3] Criando ambiente virtual...
+    python -m venv venv
+    if errorlevel 1 (
+        echo ERRO: Falha ao criar ambiente virtual.
+        pause
+        exit /b 1
+    )
+    echo       Ambiente virtual criado.
+    echo.
+
+    echo [3/3] Instalando dependencias...
+    call venv\Scripts\activate.bat
+    pip install --upgrade pip >nul 2>&1
+    pip install -r requirements.txt
+    echo.
+    echo ===============================================
+    echo    CONFIGURACAO CONCLUIDA!
+    echo ===============================================
+    echo.
 )
 
-:INVALID_OPTION
-if defined choice (
-    echo ERRO: Opcao "%choice%" invalida. Tente novamente.
-) else (
-    echo Opcao nao informada.
+:: ============================================
+:: ATIVAR AMBIENTE VIRTUAL
+:: ============================================
+call venv\Scripts\activate.bat
+if errorlevel 1 (
+    echo ERRO: Falha ao ativar ambiente virtual.
+    pause
+    exit /b 1
 )
-timeout /t 2 >nul
-set "choice="
-if "%SCRIPT_MODE%"=="INTERACTIVE" goto MENU
-set "EXIT_CODE=1"
-goto FINISH
 
-:CLEAN_OUTPUT
-echo Removendo arquivos de saida...
+:: ============================================
+:: MODO NAO-INTERATIVO
+:: ============================================
+set "ONCE="
+if not "%~1"=="" (
+    set "OPT=%~1"
+    set "ONCE=1"
+    goto SELECT
+)
+
+:: ============================================
+:: MENU PRINCIPAL
+:: ============================================
+:MENU
+echo.
+echo ===============================================
+echo    PIPELINE TABELIONATO - MENU DE OPERACOES
+echo ===============================================
+echo.
+echo  [FLUXOS COMPLETOS]
+echo    1. Pipeline COMPLETO (extracao + tratamento + batimento + baixa)
+echo    2. Pipeline SEM EXTRACAO (usa arquivos existentes)
+echo.
+echo  [EXTRACOES]
+echo    3. Extrair Email (Tabelionato)
+echo    4. Extrair MAX (SQL Server)
+echo    5. Extrair TODOS
+echo.
+echo  [TRATAMENTOS]
+echo    6. Tratar Tabelionato
+echo    7. Tratar MAX
+echo    8. Tratar TODOS
+echo.
+echo  [PROCESSAMENTOS]
+echo    9. Executar Batimento
+echo   10. Executar Baixa
+echo.
+echo  [MANUTENCAO]
+echo   11. Reinstalar Dependencias
+echo   12. Limpar Arquivos de Saida
+echo    0. Sair
+echo.
+set /p OPT=Digite sua escolha (0-12):
+
+:SELECT
+if "%OPT%"=="1" goto FULL
+if "%OPT%"=="2" goto FULL_NO_EXTRACT
+if "%OPT%"=="3" goto EXTRACT_EMAIL
+if "%OPT%"=="4" goto EXTRACT_MAX
+if "%OPT%"=="5" goto EXTRACT_ALL
+if "%OPT%"=="6" goto TREAT_TAB
+if "%OPT%"=="7" goto TREAT_MAX
+if "%OPT%"=="8" goto TREAT_ALL
+if "%OPT%"=="9" goto BATIMENTO
+if "%OPT%"=="10" goto BAIXA
+if "%OPT%"=="11" goto REINSTALL
+if "%OPT%"=="12" goto CLEAN
+if "%OPT%"=="0" goto EXIT
+
+echo Opcao invalida.
+if defined ONCE goto EXIT
+goto MENU
+
+:: ============================================
+:: FLUXOS COMPLETOS
+:: ============================================
+:FULL
+echo.
+echo ===============================================
+echo    EXECUTANDO PIPELINE COMPLETO
+echo ===============================================
+python main.py full
+if errorlevel 1 goto ERROR
+goto END
+
+:FULL_NO_EXTRACT
+echo.
+echo ===============================================
+echo    EXECUTANDO PIPELINE (SEM EXTRACAO)
+echo ===============================================
+python main.py full --skip-extraction
+if errorlevel 1 goto ERROR
+goto END
+
+:: ============================================
+:: EXTRACOES
+:: ============================================
+:EXTRACT_EMAIL
+echo.
+echo Extraindo dados via Email...
+python main.py extract-email
+if errorlevel 1 goto ERROR
+goto END
+
+:EXTRACT_MAX
+echo.
+echo Extraindo dados do MAX (SQL Server)...
+python main.py extract-max
+if errorlevel 1 goto ERROR
+goto END
+
+:EXTRACT_ALL
+echo.
+echo Extraindo TODAS as bases...
+python main.py extract-all
+if errorlevel 1 goto ERROR
+goto END
+
+:: ============================================
+:: TRATAMENTOS
+:: ============================================
+:TREAT_TAB
+echo.
+echo Tratando dados do Tabelionato...
+python main.py treat-tabelionato
+if errorlevel 1 goto ERROR
+goto END
+
+:TREAT_MAX
+echo.
+echo Tratando dados do MAX...
+python main.py treat-max
+if errorlevel 1 goto ERROR
+goto END
+
+:TREAT_ALL
+echo.
+echo Tratando TODAS as bases...
+python main.py treat-all
+if errorlevel 1 goto ERROR
+goto END
+
+:: ============================================
+:: PROCESSAMENTOS
+:: ============================================
+:BATIMENTO
+echo.
+echo Executando Batimento Tabelionato x MAX...
+python main.py batimento
+if errorlevel 1 goto ERROR
+goto END
+
+:BAIXA
+echo.
+echo Executando Baixa...
+python main.py baixa
+if errorlevel 1 goto ERROR
+goto END
+
+:: ============================================
+:: MANUTENCAO
+:: ============================================
+:REINSTALL
+echo.
+echo Reinstalando dependencias...
+pip install --upgrade pip >nul 2>&1
+pip install -r requirements.txt --force-reinstall
+echo Dependencias reinstaladas.
+goto END
+
+:CLEAN
+echo.
+echo Limpando arquivos de saida...
 if exist "data\output\max_tratada\*.zip" del /q "data\output\max_tratada\*.zip"
 if exist "data\output\tabelionato_tratada\*.zip" del /q "data\output\tabelionato_tratada\*.zip"
 if exist "data\output\batimento\*.zip" del /q "data\output\batimento\*.zip"
-if exist "data\output\inconsistencias\*.zip" del /q "data\output\inconsistencias\*.zip"
 if exist "data\output\baixa\*.zip" del /q "data\output\baixa\*.zip"
+if exist "data\output\inconsistencias\*.zip" del /q "data\output\inconsistencias\*.zip"
 if exist "data\logs\*.log" del /q "data\logs\*.log"
 echo Limpeza concluida!
-set "EXIT_CODE=0"
+goto END
+
+:: ============================================
+:: FINALIZACAO
+:: ============================================
+:END
+echo.
+echo Operacao concluida com sucesso!
+echo.
+if defined ONCE goto EXIT
+pause
+goto MENU
+
+:ERROR
+echo.
+echo [ERRO] Falha na execucao! Verifique mensagens acima.
+echo.
+if defined ONCE exit /b 1
+pause
+goto MENU
+
+:EXIT
+echo.
+echo Obrigado por usar o Pipeline Tabelionato!
+echo.
 exit /b 0
-
-:REQUIRE_ENV
-if exist "%VENV_PYTHON%" exit /b 0
-echo Ambiente virtual nao encontrado. Preparando automaticamente...
-call :SETUP_ENVIRONMENT NOPAUSE
-if exist "%VENV_PYTHON%" exit /b 0
-echo ERRO: Ambiente virtual nao encontrado.
-echo Execute a opcao "1. Instalar dependencias" antes de continuar.
-exit /b 201
-
-:SETUP_ENVIRONMENT
-set "SETUP_ERR=0"
-echo =================================
-echo  CONFIGURANDO O AMBIENTE
-echo =================================
-
-python --version
-if errorlevel 1 (
-    echo [ERRO] Python nao encontrado.
-    echo Instale o Python 3.8 ou superior:
-    echo https://www.python.org/downloads/
-    set "SETUP_ERR=1"
-    goto SETUP_FINISH
-)
-
-echo.
-echo 1. Criando ambiente virtual...
-python -m venv "%VENV_DIR%"
-
-echo.
-echo 2. Ativando ambiente virtual...
-if exist "%VENV_ACTIVATE%" (
-    call "%VENV_ACTIVATE%" >nul
-) else (
-    echo [ERRO] Script de ativacao nao encontrado em "%VENV_ACTIVATE%".
-    set "SETUP_ERR=1"
-    goto SETUP_FINISH
-)
-
-echo.
-echo 3. Instalando dependencias...
-if exist "%VENV_PIP%" (
-    "%VENV_PIP%" install -r "%REQUIREMENTS%"
-    if errorlevel 1 (
-        python -m pip install -r "%REQUIREMENTS%"
-    )
-) else (
-    python -m pip install -r "%REQUIREMENTS%"
-)
-if errorlevel 1 (
-    echo [ERRO] Falha na instalacao das dependencias.
-    echo Verifique a conexao com a internet e tente novamente.
-    set "SETUP_ERR=1"
-) else (
-    echo Dependencias instaladas com sucesso!
-)
-
-:SETUP_FINISH
-if exist "%VENV_DEACTIVATE%" call "%VENV_DEACTIVATE%" >nul 2>&1
-if "%~1"=="INTERACTIVE" (
-    echo.
-    pause
-)
-exit /b %SETUP_ERR%
-
-:FINISH
-endlocal & exit /b %EXIT_CODE%

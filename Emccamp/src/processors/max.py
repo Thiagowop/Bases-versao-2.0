@@ -11,6 +11,7 @@ from typing import Dict, List
 import pandas as pd
 
 from src.config.loader import ConfigLoader, LoadedConfig
+from src.utils.helpers import generate_timestamp
 from src.utils.io import DatasetIO
 from src.utils.logger import get_logger
 from src.utils.output_formatter import format_treatment_output
@@ -57,7 +58,7 @@ class MaxProcessor:
 
         PathManager.cleanup(self.output_dir, "max_tratada_*.zip", self.logger, silent=True)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = generate_timestamp()
         csv_name = f"max_tratada_{timestamp}.csv"
         zip_path = self.output_dir / f"max_tratada_{timestamp}.zip"
         self.io.write_zip({csv_name: df_valid}, zip_path)

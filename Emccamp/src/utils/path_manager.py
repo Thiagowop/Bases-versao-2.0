@@ -53,6 +53,32 @@ class PathManager:
         ensure_directory(resolved)
         return resolved
 
+    def resolve_file(self, directory: Path, pattern: str) -> Path:
+        """Resolve o arquivo mais recente que corresponde ao padrão.
+
+        Args:
+            directory: Diretório onde buscar
+            pattern: Padrão glob para correspondência
+
+        Returns:
+            Caminho do arquivo mais recente encontrado
+
+        Raises:
+            FileNotFoundError: Se diretório não existe ou nenhum arquivo corresponde
+        """
+        if not directory.exists():
+            raise FileNotFoundError(f"Diretório não encontrado: {directory}")
+
+        candidates = sorted(
+            directory.glob(pattern),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True
+        )
+        if not candidates:
+            raise FileNotFoundError(f"Nenhum arquivo correspondente a {pattern} em {directory}")
+
+        return candidates[0]
+
     @staticmethod
     def cleanup(
         directory: Path,

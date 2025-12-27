@@ -11,6 +11,7 @@ import pandas as pd
 
 from src.config.loader import ConfigLoader, LoadedConfig
 from src.utils import digits_only, procv_max_menos_emccamp
+from src.utils.helpers import generate_timestamp
 from src.utils.io import DatasetIO
 from src.utils.logger import get_logger
 from src.utils.path_manager import PathManager
@@ -297,7 +298,7 @@ def executar_baixa(
     PathManager.cleanup(output_dir, f"{prefix_zip}.zip", logger)
 
     add_timestamp = config.data.get("global", {}).get("add_timestamp_to_files", True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = generate_timestamp()
     sufixo = f"_{timestamp}" if add_timestamp else ""
 
     nome_com = f"{prefix_com_receb}{sufixo}.csv"
@@ -331,16 +332,8 @@ def run(loader: ConfigLoader) -> None:
     emccamp_tratada = paths.resolve_output("emccamp_tratada", "emccamp_tratada")
     max_tratada = paths.resolve_output("max_tratada", "max_tratada")
 
-    emccamp_files = sorted(emccamp_tratada.glob("emccamp_tratada*.zip"), key=lambda p: p.stat().st_mtime, reverse=True)
-    max_files = sorted(max_tratada.glob("max_tratada*.zip"), key=lambda p: p.stat().st_mtime, reverse=True)
-
-    if not emccamp_files:
-        raise FileNotFoundError(f"Arquivo EMCCAMP tratado nao encontrado em {emccamp_tratada}")
-    if not max_files:
-        raise FileNotFoundError(f"Arquivo MAX tratado nao encontrado em {max_tratada}")
-
-    emccamp_file = emccamp_files[0]
-    max_file = max_files[0]
+    emccamp_file = paths.resolve_file(emccamp_tratada, "emccamp_tratada*.zip")
+    max_file = paths.resolve_file(max_tratada, "max_tratada*.zip")
 
     inicio = datetime.now()
     stats = executar_baixa(emccamp_file, max_file, config, logger)

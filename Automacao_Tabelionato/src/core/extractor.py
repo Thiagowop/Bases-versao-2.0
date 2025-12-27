@@ -34,6 +34,7 @@ from src.utils.archives import ensure_7zip_ready, extract_with_7zip
 from src.utils.helpers import (
     format_duration,
     format_int,
+    generate_timestamp,
     normalize_ascii_lower,
     normalize_bool,
     normalize_cep,
@@ -359,7 +360,7 @@ class TabelionatoFileProcessor:
             df['DataExtracao'] = data_email
 
             # Exportar
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = generate_timestamp()
             zip_path = self._exportar_zip(df, self.input_dir_custas, f"RecebimentoCustas_{timestamp}")
 
             self.logger.info("Custas processadas: %d registros", len(df))

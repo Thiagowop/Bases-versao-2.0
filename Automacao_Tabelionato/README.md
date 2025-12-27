@@ -2,76 +2,180 @@
 
 > Sistema de processamento de dados para cruzamento Tabelionato × MAX
 
-## Início Rápido
+## Inicio Rapido
 
+### Opcao 1: Execucao Completa (Recomendado)
 ```cmd
-# 1. Executar pipeline
+run_full.bat
+```
+
+### Opcao 2: Menu Interativo (Desenvolvimento)
+```cmd
 run_pipeline.bat
-
-# 2. Escolher opção:
-#    2 = Fluxo completo (extração > tratamento > batimento > baixa)
-#    5 = Processar apenas MAX
-#    6 = Processar apenas Tabelionato
-#    7 = Processar apenas Batimento
-#    8 = Processar apenas Baixa
 ```
 
-## Estrutura
+## Scripts Disponiveis
+
+| Script | Descricao |
+|--------|-----------|
+| `run_full.bat` | Execucao completa nao-interativa (setup + extracao + processamento) |
+| `run_full.bat --skip-extraction` | Execucao completa usando arquivos existentes |
+| `run_pipeline.bat` | Menu interativo para desenvolvimento |
+
+## Estrutura do Projeto
 
 ```
-Tabelionato/
-├── main.py                    # Em scripts/fluxo_completo.py
-├── run_pipeline.bat           # Script de execução
-├── requirements.txt
-├── .env
+Automacao_Tabelionato/
+├── main.py                    # Orquestrador principal (CLI)
+├── config.yaml                # Configuracoes centralizadas
+├── run_full.bat               # Execucao completa
+├── run_pipeline.bat           # Menu interativo
+├── requirements.txt           # Dependencias Python
+├── .env                       # Credenciais (nao versionado)
+│
 ├── src/
 │   ├── core/                  # Componentes base
-│   │   └── base_processor.py
+│   │   ├── base_processor.py      # Classe base para processadores
+│   │   └── extractor.py           # Extratores consolidados:
+│   │                              #   - EmailDownloader (IMAP)
+│   │                              #   - TabelionatoFileProcessor
+│   │                              #   - TabelionatoEmailExtractor
+│   │                              #   - MaxDBExtractor
+│   │
 │   ├── processors/            # Processadores de dados
-│   │   ├── tabelionato.py     # Tratamento Tabelionato
-│   │   ├── max.py             # Tratamento MAX
-│   │   ├── batimento.py       # Tabelionato - MAX
-│   │   └── baixa.py           # Baixas
-│   └── utils/                 # Utilitários
-├── scripts/
-│   ├── fluxo_completo.py      # Orquestrador
-│   ├── extrair_email.py       # Extrai Tabelionato do email
-│   └── extrair_basemax.py     # Extrai MAX do SQL
-├── tests/
-└── docs/
+│   │   ├── tabelionato.py         # Tratamento Tabelionato
+│   │   ├── max.py                 # Tratamento MAX
+│   │   ├── batimento.py           # Tabelionato - MAX
+│   │   └── baixa.py               # Processamento de baixas
+│   │
+│   ├── utils/                 # Utilitarios
+│   │   ├── helpers.py             # Funcoes auxiliares + normalizacoes
+│   │   ├── archives.py            # Extracao ZIP/RAR com 7-Zip
+│   │   └── logger_config.py       # Configuracao de logging
+│   │
+│   └── config/                # Carregamento de configuracao
+│
+├── scripts/                   # Scripts de extracao (wrappers)
+│   ├── extrair_email.py           # Wrapper -> TabelionatoEmailExtractor
+│   └── extrair_basemax.py         # Wrapper -> MaxDBExtractor
+│
+├── data/
+│   ├── input/                 # Arquivos de entrada
+│   │   ├── tabelionato/           # Base Tabelionato (email)
+│   │   ├── tabelionato custas/    # Custas (email)
+│   │   └── max/                   # Base MAX (SQL)
+│   └── output/                # Arquivos de saida
+│       ├── tabelionato_tratada/
+│       ├── max_tratada/
+│       ├── batimento/
+│       └── baixa/
+│
+└── tests/                     # Testes automatizados
 ```
 
 ## Fluxo de Processamento
 
 ```
-Extração → Tratamento Tabelionato → Tratamento MAX → Batimento → Baixa
+┌─────────────────────────────────────┐
+│            EXTRACAO                 │
+│  Email (Cobranca + Custas) | MAX    │
+└─────────────────────────────────────┘
+                  │
+      ┌───────────┴───────────┐
+      ▼                       ▼
+┌─────────────┐         ┌─────────────┐
+│  Tratamento │         │  Tratamento │
+│ Tabelionato │         │     MAX     │
+└─────────────┘         └─────────────┘
+      │                       │
+      └───────────┬───────────┘
+                  ▼
+           ┌─────────────┐
+           │  Batimento  │
+           │ TAB - MAX   │
+           └─────────────┘
+                  │
+                  ▼
+           ┌─────────────┐
+           │    Baixa    │
+           └─────────────┘
 ```
 
-## Comandos CLI
+## Comandos CLI (main.py)
 
 ```bash
-# Definir PYTHONPATH
-$env:PYTHONPATH = "."
+# Fluxo completo
+python main.py full                    # Com extracao
+python main.py full --skip-extraction  # Sem extracao
+
+# Extracao
+python main.py extract-email           # Extrai via email
+python main.py extract-max             # Extrai MAX do SQL
+python main.py extract-all             # Extrai todos
 
 # Tratamento
-python src/processors/tabelionato.py
-python src/processors/max.py
+python main.py treat-tabelionato       # Trata Tabelionato
+python main.py treat-max               # Trata MAX
+python main.py treat-all               # Trata todos
 
-# Batimento
-python src/processors/batimento.py
-
-# Baixa
-python src/processors/baixa.py
+# Processamentos
+python main.py batimento               # Executa batimento
+python main.py baixa                   # Executa baixa
 ```
+
+## Configuracao
+
+### 1. Arquivo .env
+```ini
+# Email (Gmail)
+EMAIL_USER=seu_email@gmail.com
+EMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+IMAP_SERVER=imap.gmail.com
+
+# SQL Server
+DB_SERVER=servidor
+DB_DATABASE=database
+DB_USER=usuario
+DB_PASSWORD=senha
+```
+
+### 2. Arquivo config.yaml
+Configuracoes de paths, colunas, campanhas (58, 78, 94) e opcoes de processamento.
+
+## Extracao de Email (Consolidada)
+
+A extracao de email foi consolidada em `src/core/extractor.py`:
+
+| Classe | Funcao |
+|--------|--------|
+| `EmailDownloader` | Download via IMAP + salvamento de anexos |
+| `TabelionatoFileProcessor` | Processamento de arquivos TXT/CSV |
+| `TabelionatoEmailExtractor` | Orquestra download + processamento |
+| `MaxDBExtractor` | Extracao do SQL Server |
+
+### Funcoes de Normalizacao (helpers.py)
+
+| Funcao | Descricao |
+|--------|-----------|
+| `normalize_text()` | Remove espacos extras |
+| `normalize_data_tabelionato()` | Formata datas DD/MM/YYYY HH:MM:SS |
+| `normalize_cep()` | Mantem apenas 8 digitos |
+| `normalize_currency()` | Remove R$ e espacos |
+| `normalize_bool()` | Normaliza True/False |
+| `normalize_ascii_lower()` | Remove acentos para comparacoes |
 
 ## Resultados
 
-Os arquivos gerados ficam em `data/output/`:
-- `tabelionato_tratada/` - Base Tabelionato tratada
-- `max_tratada/` - Base MAX tratada
-- `batimento/` - Pendências identificadas
-- `baixa/` - Registros para baixa
+| Diretorio | Conteudo |
+|-----------|----------|
+| `data/output/tabelionato_tratada/` | Base Tabelionato tratada |
+| `data/output/max_tratada/` | Base MAX tratada |
+| `data/output/batimento/` | Pendencias identificadas |
+| `data/output/baixa/` | Registros para baixa |
 
-## Documentação
+## Testes
 
-- [docs/FLUXO.md](docs/FLUXO.md) - Diagrama do fluxo
+```bash
+# Executar todos os testes
+python -m pytest tests/ -v
+```

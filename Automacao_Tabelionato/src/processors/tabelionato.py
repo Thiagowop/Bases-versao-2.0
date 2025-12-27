@@ -14,7 +14,10 @@ from typing import Dict, Any
 import pandas as pd
 from pandas.api.types import is_string_dtype
 
-from src.utils.helpers import format_duration, format_int, format_percent, print_section, suppress_console_info, formatar_moeda_serie
+from src.utils.helpers import (
+    format_duration, format_int, format_percent, print_section, suppress_console_info, formatar_moeda_serie,
+    limpar_arquivos_padrao,
+)
 from src.utils.logger_config import get_logger, log_session_start, log_session_end
 
 # Configuracao de separador decimal para exportacao CSV
@@ -292,9 +295,7 @@ class TabelionatoProcessor:
         caminho_saida.mkdir(parents=True, exist_ok=True)
 
         # Remover arquivos anteriores
-        for arquivo_anterior in caminho_saida.glob('tabelionato_inconsistencias*.zip'):
-            arquivo_anterior.unlink(missing_ok=True)
-            self.logger.info(f"Arquivo anterior de inconsistencias removido: {arquivo_anterior.name}")
+        limpar_arquivos_padrao(caminho_saida, 'tabelionato_inconsistencias*.zip', self.logger)
 
         csv_temp = caminho_saida / "tabelionato_inconsistencias.csv"
         df_export = df_invalido.copy()
@@ -447,9 +448,7 @@ class TabelionatoProcessor:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Remover arquivos anteriores
-        for arquivo_anterior in output_dir.glob('tabelionato_tratado*.zip'):
-            arquivo_anterior.unlink(missing_ok=True)
-            self.logger.info(f"Arquivo anterior removido: {arquivo_anterior.name}")
+        limpar_arquivos_padrao(output_dir, 'tabelionato_tratado*.zip', self.logger)
         
         # Criar arquivo ZIP
         nome_arquivo = "tabelionato_tratado.zip"

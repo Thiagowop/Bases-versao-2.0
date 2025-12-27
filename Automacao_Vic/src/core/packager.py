@@ -7,7 +7,6 @@ Princípios:
 - DRY: reutilização por todos os processadores
 """
 
-import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, Union, List

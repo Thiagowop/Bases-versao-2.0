@@ -21,7 +21,7 @@ from src.utils.validator import InconsistenciaManager
 from src.utils.logger import get_logger, log_section
 from src.utils.helpers import procv_max_menos_vic, normalize_ascii_upper, digits_only, JudicialHelper
 from src.utils.helpers import primeiro_valor, normalizar_data_string, extrair_data_referencia
-from src.processors.vic import VicFilterApplier
+from src.utils.filters import VicFilterApplier
 
 
 @dataclass(frozen=True)
