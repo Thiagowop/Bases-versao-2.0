@@ -11,7 +11,7 @@ import pandas as pd
 
 from src.config.loader import ConfigLoader, LoadedConfig
 from src.utils import digits_only, procv_emccamp_menos_max
-from src.utils.helpers import JudicialHelper
+from src.utils.helpers import JudicialHelper, generate_timestamp
 from src.utils.io import DatasetIO
 from src.utils.logger import get_logger
 from src.utils.output_formatter import format_batimento_output
@@ -191,7 +191,7 @@ class BatimentoProcessor:
 
         PathManager.cleanup(self.batimento_dir, "emccamp_batimento_*.zip", self.logger, silent=True)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = generate_timestamp()
         zip_path = self.batimento_dir / f"emccamp_batimento_{timestamp}.zip"
 
         arquivos: Dict[str, pd.DataFrame] = {}

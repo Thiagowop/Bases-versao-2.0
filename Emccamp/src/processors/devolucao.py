@@ -15,7 +15,7 @@ import pandas as pd
 
 from src.config.loader import ConfigLoader, LoadedConfig
 from src.utils import digits_only, procv_max_menos_emccamp
-from src.utils.helpers import extrair_data_referencia, primeiro_valor, JudicialHelper
+from src.utils.helpers import extrair_data_referencia, primeiro_valor, JudicialHelper, generate_timestamp
 from src.utils.io import DatasetIO
 from src.utils.logger import get_logger
 from src.utils.output_formatter import OutputFormatter
@@ -434,7 +434,7 @@ class DevolucaoProcessor:
             silent=True
         )
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = generate_timestamp()
         zip_path = self.devolucao_dir / f"{self.export_prefix}_{timestamp}.zip"
 
         arquivos_zip: Dict[str, pd.DataFrame] = {}
