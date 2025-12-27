@@ -35,6 +35,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 from src.config.loader import load_cfg
 from src.utils.sql_conn import get_std_connection, get_candiotto_connection
 from src.utils.queries_sql import SQL_MAX, SQL_AUTOJUR, SQL_MAXSMART_JUDICIAL
+from src.utils.helpers import generate_timestamp
 
 
 # =============================================================================
@@ -368,7 +369,7 @@ class MaxDBExtractor:
                 return None
             
             registros = len(df)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = generate_timestamp()
             csv_name = f'MaxSmart_{timestamp}.csv'
             zip_path = output_dir / output_filename
             temp_csv = output_dir / csv_name
@@ -466,7 +467,7 @@ class JudicialDBExtractor:
                 return None
             
             # Salvar
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = generate_timestamp()
             csv_name = f'ClientesJudiciais_{timestamp}.csv'
             
             output_dir = self.project_root / judicial_cfg.get('output_dir', 'data/input/judicial')
