@@ -821,106 +821,51 @@ def processar_arquivo_txt(txt_path: Path, data_hora_email: str, debug: bool = Fa
         return None
 
 
-def extrair_zip_com_senha(zip_path: Path, senha: str = "Mf4tab@") -> Optional[Path]:
-    """Extrai ZIP protegido usando 7-Zip e retorna o TXT/CSV extraído."""
-    zip_path = Path(zip_path)
-    if not zip_path.exists():
-        logger.error("Arquivo ZIP nao encontrado: %s", zip_path)
+def _extrair_arquivo(arquivo_path: Path, destino: Path, senha: str = "Mf4tab@") -> Optional[Path]:
+    """Extrai arquivo ZIP/RAR usando 7-Zip e retorna o TXT/CSV extraído.
+    
+    Função unificada que substitui as duplicações anteriores.
+    """
+    arquivo_path = Path(arquivo_path)
+    if not arquivo_path.exists():
+        logger.error("Arquivo não encontrado: %s", arquivo_path)
         return None
 
     try:
-        novos_arquivos = extract_with_7zip(zip_path, INPUT_DIR, senha=senha)
+        novos_arquivos = extract_with_7zip(arquivo_path, destino, senha=senha)
     except FileNotFoundError as exc:
-        logger.error("Ferramenta 7-Zip nao localizada: %s", exc)
+        logger.error("Ferramenta 7-Zip não localizada: %s", exc)
         return None
     except RuntimeError as exc:
-        logger.error("Falha ao extrair arquivo ZIP: %s", exc)
+        logger.error("Falha ao extrair arquivo: %s", exc)
         return None
 
     for arquivo in novos_arquivos:
         if arquivo.suffix.lower() in {'.txt', '.csv'}:
-            logger.info("Arquivo de cobranca extraido: %s", arquivo)
+            logger.info("Arquivo extraído: %s", arquivo)
             return arquivo
 
-    logger.error("Nenhum arquivo TXT/CSV de cobranca foi identificado apos a extracao.")
+    logger.error("Nenhum arquivo TXT/CSV encontrado após extração.")
     return None
 
+
+# Funções de compatibilidade (chamam a função unificada)
+def extrair_zip_com_senha(zip_path: Path, senha: str = "Mf4tab@") -> Optional[Path]:
+    return _extrair_arquivo(zip_path, INPUT_DIR, senha)
 
 def extrair_zip_com_senha_custas(zip_path: Path, senha: str = "Mf4tab@") -> Optional[Path]:
-    """Extrai ZIP de custas usando 7-Zip e retorna o TXT/CSV extraído."""
-    zip_path = Path(zip_path)
-    if not zip_path.exists():
-        logger.error("Arquivo ZIP de custas nao encontrado: %s", zip_path)
-        return None
-
-    try:
-        novos_arquivos = extract_with_7zip(zip_path, INPUT_DIR_CUSTAS, senha=senha)
-    except FileNotFoundError as exc:
-        logger.error("Ferramenta 7-Zip nao localizada: %s", exc)
-        return None
-    except RuntimeError as exc:
-        logger.error("Falha ao extrair arquivo ZIP de custas: %s", exc)
-        return None
-
-    for arquivo in novos_arquivos:
-        if arquivo.suffix.lower() in {'.txt', '.csv'}:
-            logger.info("Arquivo de custas extraido: %s", arquivo)
-            return arquivo
-
-    logger.error("Nenhum arquivo TXT/CSV de custas foi identificado apos a extracao.")
-    return None
-
-def extrair_rar_com_senha_custas(rar_path: Path, senha: str = "Mf4tab@") -> Optional[Path]:
-    """Extrai arquivo RAR de custas usando o 7-Zip detectado automaticamente."""
-    rar_path = Path(rar_path)
-    if not rar_path.exists():
-        logger.error("Arquivo de custas nao encontrado: %s", rar_path)
-        return None
-
-    try:
-        novos_arquivos = extract_with_7zip(rar_path, INPUT_DIR_CUSTAS, senha=senha)
-    except FileNotFoundError as exc:
-        logger.error("Ferramenta 7-Zip nao localizada: %s", exc)
-        return None
-    except RuntimeError as exc:
-        logger.error("Falha ao extrair arquivo de custas: %s", exc)
-        return None
-
-    for arquivo in novos_arquivos:
-        if arquivo.suffix.lower() in {'.txt', '.csv'}:
-            logger.info("Arquivo de custas extraido: %s", arquivo)
-            return arquivo
-
-    logger.error("Nenhum arquivo TXT/CSV de custas foi identificado apos a extracao.")
-    return None
-
-
-
-
+    return _extrair_arquivo(zip_path, INPUT_DIR_CUSTAS, senha)
 
 def extrair_rar_com_senha(rar_path: Path, senha: str = "Mf4tab@") -> Optional[Path]:
-    """Extrai arquivo RAR de cobranca usando o 7-Zip detectado automaticamente."""
-    rar_path = Path(rar_path)
-    if not rar_path.exists():
-        logger.error("Arquivo de cobranca nao encontrado: %s", rar_path)
-        return None
+    return _extrair_arquivo(rar_path, INPUT_DIR, senha)
 
-    try:
-        novos_arquivos = extract_with_7zip(rar_path, INPUT_DIR, senha=senha)
-    except FileNotFoundError as exc:
-        logger.error("Ferramenta 7-Zip nao localizada: %s", exc)
-        return None
-    except RuntimeError as exc:
-        logger.error("Falha ao extrair arquivo de cobranca: %s", exc)
-        return None
+def extrair_rar_com_senha_custas(rar_path: Path, senha: str = "Mf4tab@") -> Optional[Path]:
+    return _extrair_arquivo(rar_path, INPUT_DIR_CUSTAS, senha)
 
-    for arquivo in novos_arquivos:
-        if arquivo.suffix.lower() in {'.txt', '.csv'}:
-            logger.info("Arquivo de cobranca extraido: %s", arquivo)
-            return arquivo
 
-    logger.error("Nenhum arquivo TXT/CSV de cobranca foi identificado apos a extracao.")
-    return None
+
+# As funções duplicadas foram removidas e substituídas pela função unificada _extrair_arquivo() acima
+
 
 
 def processar_cobranca(
