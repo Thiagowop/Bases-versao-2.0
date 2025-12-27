@@ -12,7 +12,10 @@ from datetime import datetime
 import pandas as pd
 import zipfile
 
-from src.utils.helpers import format_duration, format_int, print_section, suppress_console_info, formatar_moeda_serie
+from src.utils.helpers import (
+    format_duration, format_int, print_section, suppress_console_info, formatar_moeda_serie,
+    generate_timestamp, limpar_arquivos_padrao, VALID_OPEN_STATUSES,
+)
 from src.utils.logger_config import (
     get_logger,
     log_metrics,
@@ -234,8 +237,7 @@ class TabelionatoBatimento:
             .str.strip()
             .str.lower()
         )
-        status_validos = {'aberto', 'em aberto', 'a', '0'}
-        mask_status = status_normalizado.isin(status_validos)
+        mask_status = status_normalizado.isin(VALID_OPEN_STATUSES)
 
         mask_final = mask_doc & mask_campanha & mask_status
 

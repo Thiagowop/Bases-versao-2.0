@@ -15,7 +15,11 @@ import os
 import pandas as pd
 
 from src.core.base_processor import BaseProcessor
-from src.utils.helpers import format_duration, format_int, print_section, suppress_console_info
+from src.utils.helpers import (
+    format_duration, format_int, print_section, suppress_console_info,
+    generate_timestamp, limpar_arquivos_padrao, filtrar_status_aberto,
+    VALID_OPEN_STATUSES,
+)
 from src.utils.logger_config import (
     get_logger,
     log_metrics,
@@ -83,15 +87,7 @@ class BaixaProcessor(BaseProcessor):
 
     def _limpar_arquivos_antigos(self, diretorio: Path, padrao: str) -> None:
         """Remove arquivos antigos no diretório informado conforme padrão."""
-        if not diretorio.exists():
-            return
-
-        for arquivo in diretorio.glob(padrao):
-            try:
-                arquivo.unlink()
-                self.logger.debug("Arquivo antigo removido: %s", arquivo)
-            except OSError as exc:
-                self.logger.warning("Não foi possível remover arquivo antigo %s: %s", arquivo, exc)
+        limpar_arquivos_padrao(diretorio, padrao, self.logger)
 
     def _carregar_base_custas(self) -> pd.DataFrame:
         """Carrega a base de custas do arquivo ZIP original."""
@@ -138,15 +134,7 @@ class BaixaProcessor(BaseProcessor):
             return df_max.copy()
 
         registros_antes = len(df_max)
-        status_normalizado = (
-            df_max['STATUS_TITULO']
-            .astype(str)
-            .str.strip()
-            .str.lower()
-        )
-        status_validos = {'aberto', 'em aberto', 'a', '0'}
-        mask_aberto = status_normalizado.isin(status_validos)
-        df_filtrado = df_max[mask_aberto].copy()
+        df_filtrado = filtrar_status_aberto(df_max, 'STATUS_TITULO')
         registros_depois = len(df_filtrado)
 
         self.logger.info(
@@ -280,7 +268,7 @@ class BaixaProcessor(BaseProcessor):
         self.baixa_dir.mkdir(parents=True, exist_ok=True)
         self._limpar_arquivos_antigos(self.baixa_dir, "baixa_tabelionato_*.zip")
 
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = generate_timestamp()
         caminho_zip = self.exportar_zip(
             df_final,
             self.baixa_dir,

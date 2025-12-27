@@ -314,3 +314,97 @@ class JudicialHelper:
         df_extrajudicial = df.loc[~mask].copy()
 
         return df_judicial, df_extrajudicial
+
+
+# =============================================================================
+# FUNÇÕES UTILITÁRIAS CENTRALIZADAS
+# =============================================================================
+
+# Constantes para filtros de status
+VALID_OPEN_STATUSES = frozenset({'aberto', 'em aberto', 'vencido', 'a vencer'})
+
+
+def generate_timestamp() -> str:
+    """Gera timestamp padronizado do projeto (YYYYMMDD_HHMMSS)."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def limpar_arquivos_padrao(
+    diretorio: 'Path',
+    padrao: str,
+    logger: Any = None,
+) -> int:
+    """Remove arquivos conforme padrão glob, retorna quantidade removida.
+
+    Args:
+        diretorio: Diretório onde buscar
+        padrao: Padrão glob (ex: "*.zip", "tratado_*.csv")
+        logger: Logger opcional para registrar operações
+
+    Returns:
+        Quantidade de arquivos removidos
+    """
+    from pathlib import Path
+    diretorio = Path(diretorio)
+    if not diretorio.exists():
+        return 0
+
+    removidos = 0
+    for arquivo in diretorio.glob(padrao):
+        try:
+            arquivo.unlink()
+            removidos += 1
+            if logger:
+                logger.debug(f"Arquivo removido: {arquivo}")
+        except OSError as exc:
+            if logger:
+                logger.warning(f"Erro ao remover {arquivo}: {exc}")
+
+    return removidos
+
+
+def obter_arquivo_mais_recente(
+    diretorio: 'Path',
+    padrao: str = "*",
+) -> Optional['Path']:
+    """Retorna o arquivo mais recente no diretório conforme padrão.
+
+    Args:
+        diretorio: Diretório onde buscar
+        padrao: Padrão glob (ex: "*.zip")
+
+    Returns:
+        Path do arquivo mais recente ou None se não encontrar
+    """
+    from pathlib import Path
+    diretorio = Path(diretorio)
+    if not diretorio.exists():
+        return None
+
+    arquivos = list(diretorio.glob(padrao))
+    if not arquivos:
+        return None
+
+    return max(arquivos, key=lambda x: x.stat().st_mtime)
+
+
+def filtrar_status_aberto(
+    df: 'pd.DataFrame',
+    coluna: str = 'STATUS_TITULO',
+) -> 'pd.DataFrame':
+    """Filtra registros com status em aberto.
+
+    Args:
+        df: DataFrame a filtrar
+        coluna: Nome da coluna de status
+
+    Returns:
+        DataFrame filtrado apenas com registros em aberto
+    """
+    import pandas as pd
+    if coluna not in df.columns:
+        return df.copy()
+
+    status_norm = df[coluna].astype(str).str.strip().str.upper()
+    mask = status_norm.isin({s.upper() for s in VALID_OPEN_STATUSES})
+    return df[mask].copy()
