@@ -19,7 +19,7 @@ from src.core.file_manager import FileManager
 from src.utils.validator import InconsistenciaManager
 from src.core.packager import ExportacaoService
 from src.utils.logger import get_logger, log_section
-from src.utils.helpers import procv_vic_menos_max, digits_only, JudicialHelper
+from src.utils.helpers import procv_vic_menos_max, digits_only, JudicialHelper, generate_timestamp
 from src.utils.filters import VicFilterApplier
 
 
@@ -296,7 +296,7 @@ class BatimentoProcessor:
             df_fmt = self.formatar_batimento(df_cross)
 
             # Saída
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = generate_timestamp()
             base_output = (
                 Path(output_dir) if output_dir 
                 else Path(self.paths_config.get('output', {}).get('base', 'data/output'))

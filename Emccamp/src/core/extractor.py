@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime
 from pathlib import Path
 from typing import Tuple, Optional
 
@@ -31,6 +30,7 @@ from src.utils.output_formatter import (
     format_extraction_output,
     format_extraction_judicial_output,
 )
+from src.utils.helpers import generate_timestamp
 
 
 class BaseExtractor(ABC):
@@ -114,7 +114,7 @@ class MaxDBExtractor(BaseExtractor):
                 return None, 0
 
             registros = len(df)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = generate_timestamp()
             csv_name = f"MaxSmart_{timestamp}.csv"
             zip_path = input_dir / "MaxSmart.zip"
             write_csv_to_zip({csv_name: df}, zip_path, sep=csv_sep, encoding=encoding)
@@ -182,7 +182,7 @@ class JudicialDBExtractor(BaseExtractor):
         sep = global_cfg.get('csv_separator', ',')
         encoding = global_cfg.get('encoding', 'utf-8-sig')
 
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        timestamp = generate_timestamp()
         csv_name = f'ClientesJudiciais_{timestamp}.csv'
         zip_path = input_dir / 'ClientesJudiciais.zip'
         write_csv_to_zip({csv_name: df_final}, zip_path, sep=sep, encoding=encoding)
@@ -257,7 +257,7 @@ class DoublecheckExtractor(BaseExtractor):
             sep = global_cfg.get("csv_separator", ";")
             encoding = global_cfg.get("encoding", "utf-8-sig")
 
-            timestamp = time.strftime('%Y%m%d_%H%M%S')
+            timestamp = generate_timestamp()
             csv_name = f'acordos_abertos_{timestamp}.csv'
             write_csv_to_zip({csv_name: df}, zip_path, sep=sep, encoding=encoding)
 
