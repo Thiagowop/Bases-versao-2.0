@@ -10,6 +10,7 @@ Fornece:
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import time
 import traceback
@@ -17,6 +18,13 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
+
+# Detectar plataforma para keyboard input
+_IS_WINDOWS = os.name == 'nt'
+if _IS_WINDOWS:
+    import msvcrt
+else:
+    import select
 
 # Tempo de espera padrão em segundos (5 minutos)
 DEFAULT_WAIT_TIME = 300
@@ -80,6 +88,24 @@ ERROR_PATTERNS = {
         "suggestion": "Verifique as permissoes de acesso aos arquivos/diretorios",
     },
 }
+
+
+def _kbhit() -> bool:
+    """Verifica se uma tecla foi pressionada (cross-platform)."""
+    if _IS_WINDOWS:
+        return msvcrt.kbhit()
+    else:
+        # Unix/Linux/Mac: usar select com stdin
+        dr, _, _ = select.select([sys.stdin], [], [], 0)
+        return bool(dr)
+
+
+def _getch() -> str:
+    """Lê um caractere do teclado (cross-platform)."""
+    if _IS_WINDOWS:
+        return msvcrt.getch().decode('utf-8', errors='ignore')
+    else:
+        return sys.stdin.read(1)
 
 
 class ConsoleRunner:
@@ -236,17 +262,24 @@ class ConsoleRunner:
             return f"{hours}h {minutes}m"
 
     def _wait_before_close(self) -> None:
-        """Aguarda antes de fechar o console com countdown."""
+        """Aguarda antes de fechar o console (qualquer tecla ou timeout)."""
         self.logger.info("")
         self.logger.info("-" * 60)
         self.logger.info(f"   Console fechara automaticamente em {self.wait_time // 60} minutos")
-        self.logger.info("   Pressione Ctrl+C para sair imediatamente")
+        self.logger.info("   Pressione qualquer tecla para fechar imediatamente")
         self.logger.info("-" * 60)
         self.logger.info("")
 
         try:
             remaining = self.wait_time
             while remaining > 0:
+                # Verificar se alguma tecla foi pressionada
+                if _kbhit():
+                    _getch()  # Consumir a tecla
+                    print("\n")
+                    self.logger.info("Fechamento confirmado pelo usuario.")
+                    return
+
                 mins = remaining // 60
                 secs = remaining % 60
                 # Atualizar a cada 30 segundos para não poluir muito

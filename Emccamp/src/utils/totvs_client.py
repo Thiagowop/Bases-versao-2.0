@@ -124,9 +124,8 @@ def baixar_baixas_emccamp(config: LoadedConfig) -> tuple[Path, int]:
         )
 
     data_col = _pick_column(("DATA_RECEBIMENTO", "DATA_BAIXA"))
-    valor_col = _pick_column(("VALOR_RECEBIDO", "VALOR_ATUALIZADO", "VALOR_ORIGINAL"))
 
-    required_cols = {"NUM_VENDA", "ID_PARCELA", "HONORARIO_BAIXADO", data_col, valor_col}
+    required_cols = {"NUM_VENDA", "ID_PARCELA", "HONORARIO_BAIXADO", data_col}
     missing = required_cols.difference(df.columns)
     if missing:
         raise ValueError(
@@ -141,7 +140,8 @@ def baixar_baixas_emccamp(config: LoadedConfig) -> tuple[Path, int]:
         + "-"
         + df_filtrado["ID_PARCELA"].astype(str).str.strip()
     )
-    df_filtrado["VALOR_RECEBIDO"] = pd.to_numeric(df_filtrado[valor_col], errors="coerce")
+    # VALOR_RECEBIDO vem de HONORARIO_BAIXADO (já convertido para numérico na linha 135)
+    df_filtrado["VALOR_RECEBIDO"] = df_filtrado["HONORARIO_BAIXADO"]
     df_filtrado["DATA_RECEBIMENTO"] = pd.to_datetime(
         df_filtrado[data_col], errors="coerce", dayfirst=True
     ).dt.strftime("%Y-%m-%d")
