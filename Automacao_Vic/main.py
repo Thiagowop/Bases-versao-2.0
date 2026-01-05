@@ -55,6 +55,7 @@ from src.utils.helpers import (
     parse_extraction_summary,
     _SUMMARY_FIELDS,
 )
+from src.utils.console_runner import run_with_console
 
 
 class PipelineOrchestrator:
@@ -597,8 +598,8 @@ class PipelineOrchestrator:
         }
 
 
-def main():
-    """Função principal do orquestrador."""
+def _build_parser() -> argparse.ArgumentParser:
+    """Constrói o parser de argumentos."""
     parser = argparse.ArgumentParser(
         description='Pipeline VIC/MAX Refatorado - Orquestrador Principal',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -620,7 +621,7 @@ Funcionalidades de extração:
     • Judicial: Extrai dados judiciais (data/input/judicial/)
         """
     )
-    
+
     # Argumentos de modo de operação
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--pipeline-completo', action='store_true',
@@ -635,7 +636,7 @@ Funcionalidades de extração:
                       help='Processa apenas batimento com arquivos VIC e MAX')
     group.add_argument('--extrair-bases', action='store_true',
                       help='Extrai bases VIC (email), MAX (DB) e Judicial (DB)')
-    
+
     # Argumentos opcionais
     parser.add_argument('-o', '--output', type=Path,
                        help='Diretório de saída (usa config.yaml se não informado)')
@@ -647,59 +648,83 @@ Funcionalidades de extração:
                        help='Não adicionar timestamp aos arquivos de saída')
     parser.add_argument('--skip-extraction', action='store_true',
                        help='Pula extração automática no pipeline completo (requer arquivos já existentes)')
-    
-    args = parser.parse_args()
-    
-    try:
-        # Inicializar orquestrador
-        orchestrator = PipelineOrchestrator()
-        
-        # Executar operação solicitada
-        if args.pipeline_completo:
-            resultado = orchestrator.pipeline_completo(
-                saida=args.output,
-                comparar_com_atual=args.comparar,
-                skip_extraction=args.skip_extraction
-            )
-            
-        elif args.max:
-            resultado = orchestrator.processar_max(
-                entrada=args.entrada,
-                saida=args.output
-            )
-            
-        elif args.vic:
-            resultado = orchestrator.processar_vic(
-                entrada=args.entrada,
-                saida=args.output
-            )
-            
-        elif args.devolucao:
-            vic_file, max_file = args.devolucao
-            resultado = orchestrator.processar_devolucao(
-                vic_path=Path(vic_file),
-                max_path=Path(max_file)
-            )
-            
-        elif args.batimento:
-            vic_file, max_file = args.batimento
-            resultado = orchestrator.processar_batimento(
-                vic_path=Path(vic_file),
-                max_path=Path(max_file),
-                saida=args.output
-            )
-            
-        elif args.extrair_bases:
-            resultado = orchestrator.extrair_bases()
-            
+    parser.add_argument('--no-wait', action='store_true',
+                       help='Não aguarda antes de fechar o console')
 
-    except KeyboardInterrupt:
-        print("\n❌ Execucao interrompida pelo usuario")
-        sys.exit(1)
-        
-    except Exception as e:
-        print(f"\n❌ Erro na execucao: {e}")
-        sys.exit(1)
+    return parser
+
+
+def _execute_pipeline(args: argparse.Namespace) -> None:
+    """Executa o pipeline conforme os argumentos."""
+    # Inicializar orquestrador
+    orchestrator = PipelineOrchestrator()
+
+    # Executar operação solicitada
+    if args.pipeline_completo:
+        orchestrator.pipeline_completo(
+            saida=args.output,
+            comparar_com_atual=args.comparar,
+            skip_extraction=args.skip_extraction
+        )
+
+    elif args.max:
+        orchestrator.processar_max(
+            entrada=args.entrada,
+            saida=args.output
+        )
+
+    elif args.vic:
+        orchestrator.processar_vic(
+            entrada=args.entrada,
+            saida=args.output
+        )
+
+    elif args.devolucao:
+        vic_file, max_file = args.devolucao
+        orchestrator.processar_devolucao(
+            vic_path=Path(vic_file),
+            max_path=Path(max_file)
+        )
+
+    elif args.batimento:
+        vic_file, max_file = args.batimento
+        orchestrator.processar_batimento(
+            vic_path=Path(vic_file),
+            max_path=Path(max_file),
+            saida=args.output
+        )
+
+    elif args.extrair_bases:
+        orchestrator.extrair_bases()
+
+
+def main():
+    """Função principal do orquestrador com console runner."""
+    parser = _build_parser()
+    args = parser.parse_args()
+
+    # Diretório base do projeto
+    base_dir = Path(__file__).parent
+
+    # Se --no-wait, executar diretamente sem console runner
+    if args.no_wait:
+        try:
+            _execute_pipeline(args)
+        except KeyboardInterrupt:
+            print("\n❌ Execucao interrompida pelo usuario")
+            sys.exit(1)
+        except Exception as e:
+            print(f"\n❌ Erro na execucao: {e}")
+            sys.exit(1)
+    else:
+        # Executar com console runner (espera 5 minutos antes de fechar)
+        exit_code = run_with_console(
+            project_name="VIC",
+            base_dir=base_dir,
+            pipeline_func=lambda: _execute_pipeline(args),
+            wait_time=300,  # 5 minutos
+        )
+        sys.exit(exit_code)
 
 
 if __name__ == '__main__':

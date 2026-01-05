@@ -1,10 +1,12 @@
 import argparse
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from src.pipeline import Pipeline
 from src.config.loader import ConfigLoader
+from src.utils.console_runner import run_with_console
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -17,6 +19,11 @@ if ENV_FILE.exists():
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python main.py", description="Pipeline EMCCAMP")
+
+    # Argumento global para desabilitar espera
+    parser.add_argument('--no-wait', action='store_true',
+                       help='Nao aguarda antes de fechar o console')
+
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     extract = subparsers.add_parser("extract", help="Executa extracoes")
@@ -38,6 +45,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="emccamp_batimento",
         help="Chave de configuracao em config.yaml para enriquecimento (padrao: emccamp_batimento)",
     )
+
+    # Fluxo completo
+    subparsers.add_parser("full", help="Executa fluxo completo (extract all + treat all + batimento + baixa + devolucao)")
+
     return parser
 
 
@@ -65,9 +76,8 @@ def handle_treat(args: argparse.Namespace, pipeline: Pipeline) -> None:
         pipeline.treat_max()
 
 
-def main(argv: list[str] | None = None) -> None:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+def _execute_pipeline(args: argparse.Namespace) -> None:
+    """Executa o pipeline conforme os argumentos."""
     loader = ConfigLoader(base_path=BASE_DIR)
     pipeline = Pipeline(loader=loader)
 
@@ -83,6 +93,62 @@ def main(argv: list[str] | None = None) -> None:
         pipeline.devolucao()
     elif args.command == "enriquecimento":
         pipeline.enriquecimento(args.dataset)
+    elif args.command == "full":
+        # Fluxo completo
+        print("=" * 60)
+        print("   PIPELINE COMPLETO EMCCAMP")
+        print("=" * 60)
+
+        print("\n[1/7] Extraindo EMCCAMP...")
+        pipeline.extract_emccamp()
+
+        print("\n[2/7] Extraindo MAX...")
+        pipeline.extract_max()
+
+        print("\n[3/7] Extraindo Judicial...")
+        pipeline.extract_judicial()
+
+        print("\n[4/7] Tratando EMCCAMP...")
+        pipeline.treat_emccamp()
+
+        print("\n[5/7] Tratando MAX...")
+        pipeline.treat_max()
+
+        print("\n[6/7] Executando Batimento...")
+        pipeline.batimento()
+
+        print("\n[7/7] Executando Baixa...")
+        pipeline.baixa()
+
+        print("\n" + "=" * 60)
+        print("   PIPELINE COMPLETO FINALIZADO!")
+        print("=" * 60)
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Funcao principal com console runner."""
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    # Se --no-wait, executar diretamente sem console runner
+    if args.no_wait:
+        try:
+            _execute_pipeline(args)
+        except KeyboardInterrupt:
+            print("\n Execucao interrompida pelo usuario")
+            sys.exit(1)
+        except Exception as e:
+            print(f"\n Erro na execucao: {e}")
+            sys.exit(1)
+    else:
+        # Executar com console runner (espera 5 minutos antes de fechar)
+        exit_code = run_with_console(
+            project_name="EMCCAMP",
+            base_dir=BASE_DIR,
+            pipeline_func=lambda: _execute_pipeline(args),
+            wait_time=300,  # 5 minutos
+        )
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":

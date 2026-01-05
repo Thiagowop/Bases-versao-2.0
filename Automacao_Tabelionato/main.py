@@ -29,6 +29,7 @@ load_dotenv(BASE_DIR / ".env")
 
 from src.utils.logger_config import get_logger, log_session_start, log_session_end
 from src.utils.helpers import print_section, format_duration
+from src.utils.console_runner import run_with_console
 
 logger = get_logger("main")
 
@@ -117,65 +118,87 @@ def executar_fluxo_completo(*, skip_extraction: bool = False) -> int:
         return 1
 
 
+def _execute_pipeline(args: argparse.Namespace) -> None:
+    """Executa o pipeline conforme os argumentos."""
+    if args.command == "extract-email":
+        extrair_email()
+    elif args.command == "extract-max":
+        extrair_max()
+    elif args.command == "extract-all":
+        extrair_email()
+        extrair_max()
+    elif args.command == "treat-tabelionato":
+        tratar_tabelionato()
+    elif args.command == "treat-max":
+        tratar_max()
+    elif args.command == "treat-all":
+        tratar_tabelionato()
+        tratar_max()
+    elif args.command == "batimento":
+        executar_batimento()
+    elif args.command == "baixa":
+        executar_baixa()
+    elif args.command == "full":
+        skip = getattr(args, "skip_extraction", False)
+        result = executar_fluxo_completo(skip_extraction=skip)
+        if result != 0:
+            raise RuntimeError("Fluxo completo falhou")
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Ponto de entrada principal."""
+    """Ponto de entrada principal com console runner."""
     parser = argparse.ArgumentParser(
         prog="python main.py",
         description="Pipeline Tabelionato - Extração, Tratamento, Batimento e Baixa"
     )
-    
+
+    # Argumento global para desabilitar espera
+    parser.add_argument('--no-wait', action='store_true',
+                       help='Nao aguarda antes de fechar o console')
+
     subparsers = parser.add_subparsers(dest="command", required=False)
-    
+
     # Comandos individuais
     subparsers.add_parser("extract-email", help="Extrai dados via email")
     subparsers.add_parser("extract-max", help="Extrai dados do MAX (SQL Server)")
     subparsers.add_parser("extract-all", help="Executa todas as extrações")
-    
+
     subparsers.add_parser("treat-tabelionato", help="Trata dados do Tabelionato")
     subparsers.add_parser("treat-max", help="Trata dados do MAX")
     subparsers.add_parser("treat-all", help="Executa todos os tratamentos")
-    
+
     subparsers.add_parser("batimento", help="Executa batimento Tabelionato x MAX")
     subparsers.add_parser("baixa", help="Executa processamento de baixa")
-    
+
     # Fluxo completo
     full = subparsers.add_parser("full", help="Executa fluxo completo")
     full.add_argument("--skip-extraction", action="store_true", help="Pula etapas de extração")
-    
+
     args = parser.parse_args(argv)
-    
+
     # Se nenhum comando, executar fluxo completo
     if args.command is None:
         args.command = "full"
-    
-    try:
-        if args.command == "extract-email":
-            extrair_email()
-        elif args.command == "extract-max":
-            extrair_max()
-        elif args.command == "extract-all":
-            extrair_email()
-            extrair_max()
-        elif args.command == "treat-tabelionato":
-            tratar_tabelionato()
-        elif args.command == "treat-max":
-            tratar_max()
-        elif args.command == "treat-all":
-            tratar_tabelionato()
-            tratar_max()
-        elif args.command == "batimento":
-            executar_batimento()
-        elif args.command == "baixa":
-            executar_baixa()
-        elif args.command == "full":
-            skip = getattr(args, "skip_extraction", False)
-            return executar_fluxo_completo(skip_extraction=skip)
-        
-        return 0
-        
-    except Exception as exc:
-        logger.exception("Erro: %s", exc)
-        return 1
+
+    # Se --no-wait, executar diretamente sem console runner
+    if args.no_wait:
+        try:
+            _execute_pipeline(args)
+            return 0
+        except KeyboardInterrupt:
+            print("\n Execucao interrompida pelo usuario")
+            return 1
+        except Exception as exc:
+            logger.exception("Erro: %s", exc)
+            return 1
+    else:
+        # Executar com console runner (espera 5 minutos antes de fechar)
+        return run_with_console(
+            project_name="TABELIONATO",
+            base_dir=BASE_DIR,
+            pipeline_func=lambda: _execute_pipeline(args),
+            wait_time=300,  # 5 minutos
+        )
 
 
 if __name__ == "__main__":
