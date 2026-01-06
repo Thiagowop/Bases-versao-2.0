@@ -161,6 +161,9 @@ class ContactEnrichmentProcessor:
         required = [col for col in required if col]
 
         df_source = self.io.read(input_file)
+        total_original = len(df_source)
+        print(f"\n[DEBUG] Registros na base de entrada: {total_original}")
+
         self._ensure_columns(df_source, required)
 
         if key_components:
@@ -181,7 +184,9 @@ class ContactEnrichmentProcessor:
             if not filter_path_raw or not filter_column:
                 raise ValueError("Filtro de chave exige source_path e column configurados.")
             filter_path = self._resolve_path(filter_path_raw)
+            print(f"[DEBUG] Arquivo de filtro (batimento): {filter_path.name}")
             keys = self._collect_keys(filter_path, filter_column, members)
+            print(f"[DEBUG] Chaves unicas no batimento: {len(keys)}")
             if not keys:
                 raise RuntimeError(
                     f"Filtro de chave em {filter_path} nao retornou nenhum valor para {filter_column}."
@@ -192,6 +197,10 @@ class ContactEnrichmentProcessor:
                 )
             df_source[target_key_column] = df_source[target_key_column].astype(str).str.strip()
             df_source = df_source[df_source[target_key_column].isin(keys)].copy()
+            print(f"[DEBUG] Registros APOS filtro pelo batimento: {len(df_source)}")
+            print(f"[DEBUG] Reducao: {total_original} -> {len(df_source)} ({100 - (len(df_source)/total_original*100):.1f}% removido)\n")
+        else:
+            print("[DEBUG] ATENCAO: Nenhum filtro de chave configurado! Usando base completa.\n")
 
         limpar_telefone = bool(rules.get("limpar_telefone", True))
         descartar_email_sem_arroba = bool(rules.get("descartar_email_sem_arroba", True))
